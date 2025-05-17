@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import ta
+import numpy as np
 
 st.set_page_config(page_title="Swing Trade Signal Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Dashboard")
@@ -22,6 +23,22 @@ profit_target_pct = 0.10
 stop_loss_pct = 0.05
 entry_buffer_pct = 0.005
 
+def find_support_resistance(prices, window=20):
+    supports = []
+    resistances = []
+
+    for i in range(window, len(prices) - window):
+        is_support = all(prices[i] < prices[i - j] and prices[i] < prices[i + j] for j in range(1, window))
+        is_resistance = all(prices[i] > prices[i - j] and prices[i] > prices[i + j] for j in range(1, window))
+        if is_support:
+            supports.append(prices[i])
+        if is_resistance:
+            resistances.append(prices[i])
+
+    supports = sorted(set(supports))
+    resistances = sorted(set(resistances))
+    return supports[-1] if supports else np.nan, resistances[0] if resistances else np.nan
+
 results = []
 
 for ticker in tickers:
@@ -40,6 +57,8 @@ for ticker in tickers:
     df['MACD_SIGNAL'] = macd.macd_signal()
     df['20EMA'] = close_series.ewm(span=20).mean()
     df['50EMA'] = close_series.ewm(span=50).mean()
+    df['SMA50'] = close_series.rolling(window=50).mean()
+    df['SMA200'] = close_series.rolling(window=200).mean()
 
     volume = df['Volume']
     volume_avg = volume.rolling(window=10).mean()
@@ -56,6 +75,7 @@ for ticker in tickers:
         continue
 
     latest = df.iloc[-1]
+    support, resistance = find_support_resistance(df['Close'])
 
     entry_signal = (
         latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
@@ -78,6 +98,10 @@ for ticker in tickers:
         "RSI": round(latest['RSI'].item(), 2),
         "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
         "Volume Spike": bool(latest['Volume_Spike'].item()),
+        "SMA50": round(latest['SMA50'], 2),
+        "SMA200": round(latest['SMA200'], 2),
+        "Support": round(support, 2) if not np.isnan(support) else "N/A",
+        "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
