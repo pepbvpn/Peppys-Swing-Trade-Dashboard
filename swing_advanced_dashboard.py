@@ -30,15 +30,18 @@ results = []
 # Scan each ticker
 for ticker in tickers:
     try:
-        df = yf.download(ticker, period=period, interval=interval)
-        if df.empty or len(df) < 20:
+        df = yf.download(ticker, period=period, interval=interval, progress=False)
+        if df.empty or len(df) < 50:
+            st.warning(f"{ticker}: Not enough data to process.")
             continue
 
         df.dropna(inplace=True)
         close_series = df['Close'].squeeze()
 
-        df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
+        # Indicators with safe alignment
+        rsi = ta.momentum.RSIIndicator(close=close_series).rsi()
         macd = ta.trend.MACD(close=close_series)
+        df['RSI'] = rsi
         df['MACD'] = macd.macd()
         df['MACD_SIGNAL'] = macd.macd_signal()
         df['20EMA'] = df['Close'].ewm(span=20).mean()
@@ -46,7 +49,9 @@ for ticker in tickers:
         df['Volume_Avg'] = df['Volume'].rolling(window=10).mean()
         df['Volume_Spike'] = df['Volume'] > df['Volume_Avg']
 
+        df = df.dropna()
         latest = df.iloc[-1]
+
         entry_signal = (
             latest['RSI'] > 30 and latest['RSI'] < 40 and
             latest['MACD'] > latest['MACD_SIGNAL'] and
