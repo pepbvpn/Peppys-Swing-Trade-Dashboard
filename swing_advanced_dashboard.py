@@ -1,7 +1,11 @@
 
+import streamlit as st
 import pandas as pd
 import yfinance as yf
 import ta
+
+st.set_page_config(page_title="Colab Swing Scanner", layout="wide")
+st.title("📈 Swing Trade Signal Dashboard")
 
 # Parameters
 tickers = ["NVDA", "AAPL", "MSFT", "TSLA", "SPY"]
@@ -11,20 +15,16 @@ entry_buffer_pct = 0.005
 
 results = []
 
-# Loop through each ticker
 for ticker in tickers:
-    df = yf.download(ticker, period="6mo", interval="1d")
+    df = yf.download(ticker, period="6mo", interval="1d", progress=False)
 
-    # Ensure data was retrieved
     if df.empty:
         continue
 
-    # Extract Close as a proper Series
     close_series = df['Close']
     if isinstance(close_series, pd.DataFrame):
         close_series = close_series.squeeze()
 
-    # Indicators
     df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
     macd = ta.trend.MACD(close=close_series)
     df['MACD'] = macd.macd()
@@ -32,29 +32,22 @@ for ticker in tickers:
     df['20EMA'] = close_series.ewm(span=20).mean()
     df['50EMA'] = close_series.ewm(span=50).mean()
 
-    # Handle Volume and Rolling Average safely - MOVED INSIDE THE LOOP
     volume = df['Volume']
     volume_avg = volume.rolling(window=10).mean()
-
-    # Align to avoid ValueError
     volume, volume_avg = volume.align(volume_avg, join='inner')
-    df = df.loc[volume.index]  # trim the DataFrame to match
+    df = df.loc[volume.index]
 
     df['Volume'] = volume
     df['Volume_Avg'] = volume_avg
     df['Volume_Spike'] = volume > volume_avg
 
-    # Drop rows with NaNs after indicator calculations
     df.dropna(inplace=True)
 
-    # Skip if there's not enough data left
     if df.empty:
         continue
 
-    # Get the latest row
     latest = df.iloc[-1]
 
-    # Entry Signal Logic
     entry_signal = (
         latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
         latest['MACD'].item() > latest['MACD_SIGNAL'].item() and
@@ -63,12 +56,10 @@ for ticker in tickers:
         bool(latest['Volume_Spike'].item())
     )
 
-    # Price targets
     entry_watch = latest['High'] * (1 + entry_buffer_pct)
     target_price = entry_watch * (1 + profit_target_pct)
     stop_price = entry_watch * (1 - stop_loss_pct)
 
-    # Store results
     results.append({
         "Ticker": ticker,
         "Latest Close": round(latest['Close'], 2),
@@ -81,5 +72,10 @@ for ticker in tickers:
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
-# Show results
-print(pd.DataFrame(results))
+df = pd.DataFrame(results)
+
+if not df.empty:
+    st.dataframe(df)
+    st.download_button("Download CSV", df.to_csv(index=False), file_name="swing_signals.csv")
+else:
+    st.info("No signals available right now.")
