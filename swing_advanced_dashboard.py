@@ -51,7 +51,9 @@ for ticker in tickers:
     if df.empty or len(df) < 100:
         continue
 
-    close_series = df['Close'].squeeze()
+    close_series = df['Close']
+    if isinstance(close_series, pd.DataFrame):
+        close_series = close_series.squeeze()
     df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
     macd = ta.trend.MACD(close=close_series)
     df['MACD'] = macd.macd()
