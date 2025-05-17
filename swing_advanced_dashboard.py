@@ -13,7 +13,7 @@ tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="N
 interval = st.selectbox("Select interval", options=["1d", "1h", "15m"])
 
 # Set period based on interval
-period_map = {"1d": "6mo", "1h": "30d", "15m": "5d"}
+period_map = {"1d": "1y", "1h": "60d", "15m": "10d"}
 period = period_map[interval]
 
 tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
@@ -23,7 +23,7 @@ profit_target_pct = 0.10
 stop_loss_pct = 0.05
 entry_buffer_pct = 0.005
 
-def find_support_resistance(prices, window=20):
+def find_support_resistance_fallback(prices, window=10):
     supports = []
     resistances = []
 
@@ -37,19 +37,23 @@ def find_support_resistance(prices, window=20):
 
     supports = sorted(set(supports))
     resistances = sorted(set(resistances))
-    return supports[-1] if supports else np.nan, resistances[0] if resistances else np.nan
+
+    if supports and resistances:
+        return supports[-1], resistances[0]
+    elif prices.size > 0:
+        return prices.min(), prices.max()
+    else:
+        return np.nan, np.nan
 
 results = []
 
 for ticker in tickers:
     df = yf.download(ticker, period=period, interval=interval, progress=False)
 
-    if df.empty:
+    if df.empty or len(df) < 100:
         continue
 
-    close_series = df['Close']
-    if isinstance(close_series, pd.DataFrame):
-        close_series = close_series.squeeze()
+    close_series = df['Close'].squeeze()
 
     df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
     macd = ta.trend.MACD(close=close_series)
@@ -75,7 +79,7 @@ for ticker in tickers:
         continue
 
     latest = df.iloc[-1]
-    support, resistance = find_support_resistance(df['Close'])
+    support, resistance = find_support_resistance_fallback(df['Close'].values)
 
     entry_signal = (
         latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
