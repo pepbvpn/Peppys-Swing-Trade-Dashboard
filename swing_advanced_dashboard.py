@@ -4,11 +4,20 @@ import pandas as pd
 import yfinance as yf
 import ta
 
-st.set_page_config(page_title="Colab Swing Scanner", layout="wide")
+st.set_page_config(page_title="Swing Trade Signal Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Dashboard")
 
+# User inputs
+tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
+interval = st.selectbox("Select interval", options=["1d", "1h", "15m"])
+
+# Set period based on interval
+period_map = {"1d": "6mo", "1h": "30d", "15m": "5d"}
+period = period_map[interval]
+
+tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
+
 # Parameters
-tickers = ["NVDA", "AAPL", "MSFT", "TSLA", "SPY"]
 profit_target_pct = 0.10
 stop_loss_pct = 0.05
 entry_buffer_pct = 0.005
@@ -16,7 +25,7 @@ entry_buffer_pct = 0.005
 results = []
 
 for ticker in tickers:
-    df = yf.download(ticker, period="6mo", interval="1d", progress=False)
+    df = yf.download(ticker, period=period, interval=interval, progress=False)
 
     if df.empty:
         continue
@@ -78,4 +87,4 @@ if not df.empty:
     st.dataframe(df)
     st.download_button("Download CSV", df.to_csv(index=False), file_name="swing_signals.csv")
 else:
-    st.info("No signals available right now.")
+    st.info("No signals available for the selected tickers and interval.")
