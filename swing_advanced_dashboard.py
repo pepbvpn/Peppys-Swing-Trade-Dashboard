@@ -8,17 +8,13 @@ import numpy as np
 st.set_page_config(page_title="Swing Trade Signal Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Dashboard")
 
-# User inputs
 tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
 interval = st.selectbox("Select interval", options=["1d", "1h", "15m"])
-
-# Set period based on interval
 period_map = {"1d": "1y", "1h": "60d", "15m": "10d"}
 period = period_map[interval]
 
 tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
 
-# Parameters
 profit_target_pct = 0.10
 stop_loss_pct = 0.05
 entry_buffer_pct = 0.005
@@ -27,21 +23,23 @@ def find_support_resistance_fallback(prices, window=10):
     supports = []
     resistances = []
 
+    prices = np.array(prices).flatten()
+
     for i in range(window, len(prices) - window):
         is_support = all(prices[i] < prices[i - j] and prices[i] < prices[i + j] for j in range(1, window))
         is_resistance = all(prices[i] > prices[i - j] and prices[i] > prices[i + j] for j in range(1, window))
         if is_support:
-            supports.append(prices[i])
+            supports.append(float(prices[i]))
         if is_resistance:
-            resistances.append(prices[i])
+            resistances.append(float(prices[i]))
 
-    supports = sorted(set(supports))
-    resistances = sorted(set(resistances))
+    supports = sorted(list(set(supports)))
+    resistances = sorted(list(set(resistances)))
 
     if supports and resistances:
         return supports[-1], resistances[0]
     elif prices.size > 0:
-        return prices.min(), prices.max()
+        return float(np.nanmin(prices)), float(np.nanmax(prices))
     else:
         return np.nan, np.nan
 
@@ -54,7 +52,6 @@ for ticker in tickers:
         continue
 
     close_series = df['Close'].squeeze()
-
     df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
     macd = ta.trend.MACD(close=close_series)
     df['MACD'] = macd.macd()
@@ -72,7 +69,6 @@ for ticker in tickers:
     df['Volume'] = volume
     df['Volume_Avg'] = volume_avg
     df['Volume_Spike'] = volume > volume_avg
-
     df.dropna(inplace=True)
 
     if df.empty:
