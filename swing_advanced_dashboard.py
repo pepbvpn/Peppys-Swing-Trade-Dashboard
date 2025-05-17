@@ -97,6 +97,7 @@ for ticker in tickers:
         "Stop-Loss (5%)": round(stop_price, 2),
         "RSI": round(latest['RSI'].item(), 2),
         "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
+        "Volume": int(latest['Volume']),
         "Volume Spike": bool(latest['Volume_Spike'].item()),
         "SMA50": round(latest['SMA50'], 2),
         "SMA200": round(latest['SMA200'], 2),
