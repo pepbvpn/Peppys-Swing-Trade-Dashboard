@@ -89,11 +89,22 @@ for ticker in tickers:
     target_price = entry_watch * (1 + profit_target_pct)
     stop_price = entry_watch * (1 - stop_loss_pct)
 
-    price = latest['Close'].item()
-    sma50 = latest['SMA50'].item()
-    sma200 = latest['SMA200'].item()
+    try:
+        price = latest['Close'].item()
+        sma50 = latest['SMA50'].item()
+        sma200 = latest['SMA200'].item()
 
-    trend = "Bullish" if price > sma50 and sma50 > sma200         else "Bearish" if price < sma50 and sma50 < sma200         else "Neutral"
+        if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
+            if price > sma50 and sma50 > sma200:
+                trend = "📈 Bullish"
+            elif price < sma50 and sma50 < sma200:
+                trend = "📉 Bearish"
+            else:
+                trend = "↔️ Neutral"
+        else:
+            trend = "❓ Not enough data"
+    except:
+        trend = "❓ Not enough data"
 
     results.append({
         "Ticker": ticker,
