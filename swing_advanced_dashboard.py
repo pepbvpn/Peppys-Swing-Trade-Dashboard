@@ -89,6 +89,14 @@ for ticker in tickers:
     target_price = entry_watch * (1 + profit_target_pct)
     stop_price = entry_watch * (1 - stop_loss_pct)
 
+    # Trend classification
+    if latest['Close'] > latest['SMA50'] and latest['SMA50'] > latest['SMA200']:
+        trend = "📈 Bullish"
+    elif latest['Close'] < latest['SMA50'] and latest['SMA50'] < latest['SMA200']:
+        trend = "📉 Bearish"
+    else:
+        trend = "↔️ Neutral"
+
     results.append({
         "Ticker": ticker,
         "Latest Close": round(latest['Close'], 2),
@@ -103,6 +111,7 @@ for ticker in tickers:
         "SMA200": round(latest['SMA200'], 2),
         "Support": round(support, 2) if not np.isnan(support) else "N/A",
         "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
+        "Trend": trend,
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
