@@ -65,7 +65,8 @@ for ticker in tickers:
     sma200 = latest['SMA200']
     rsi = latest['RSI']
 
-    try:
+    
+try:
     sma50_val = float(sma50)
     sma200_val = float(sma200)
     close_val = float(latest['Close'])
