@@ -62,9 +62,13 @@ for ticker in tickers:
     df['SMA50'] = close_series.rolling(window=50).mean()
     df['SMA200'] = close_series.rolling(window=200).mean()
 
-    df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=close_series, volume=df["Volume"]).on_balance_volume()
+    # Ensure close_series and volume are aligned for OBV
+    close_series, volume = close_series.align(df["Volume"], join="inner")
+    if isinstance(close_series, pd.DataFrame):
+        close_series = close_series.squeeze()
+    obv = ta.volume.OnBalanceVolumeIndicator(close=close_series, volume=volume).on_balance_volume()
+    df["OBV"] = obv
 
-    volume = df['Volume']
     volume_avg = volume.rolling(window=10).mean()
     volume, volume_avg = volume.align(volume_avg, join='inner')
     df = df.loc[volume.index]
@@ -132,6 +136,7 @@ for ticker in tickers:
         "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
         "Trend": trend,
         "Institutional Sentiment": sentiment,
+        "OBV": int(latest["OBV"]),
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
