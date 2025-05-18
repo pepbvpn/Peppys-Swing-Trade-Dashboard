@@ -67,16 +67,16 @@ for ticker in tickers:
 
     
 try:
-    sma50_val = float(sma50)
-    sma200_val = float(sma200)
-    close_val = float(latest['Close'])
+        sma50_val = float(sma50)
+        sma200_val = float(sma200)
+        close_val = float(latest['Close'])
 
-    if close_val > sma50_val and sma50_val > sma200_val:
-        signal = "✅ BUY"
-    else:
+        if close_val > sma50_val and sma50_val > sma200_val:
+            signal = "✅ BUY"
+        else:
+            signal = "❌ WAIT"
+    except:
         signal = "❌ WAIT"
-except:
-    signal = "❌ WAIT"
 
         signal = "✅ BUY"
     else:
