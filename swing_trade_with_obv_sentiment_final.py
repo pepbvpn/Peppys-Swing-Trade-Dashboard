@@ -114,14 +114,14 @@ for ticker in tickers:
         price > sma200 and
         sma50 > sma200 and
         "OBV" in df.columns and
-        latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
+        (latest["OBV"] - df["OBV"].rolling(window=20).mean().iloc[-1]) > 0
     ):
         longterm_signal = "✅ BUY & HOLD"
     elif (
         price > sma50 and
         sma50 > sma200 * 0.9 and
         "OBV" in df.columns and
-        latest["OBV"] > df["OBV"].rolling(window=10).mean().iloc[-1]
+        (latest["OBV"] - df["OBV"].rolling(window=10).mean().iloc[-1]) > 0
     ):
         longterm_signal = "🟡 Early Entry"
     else:
