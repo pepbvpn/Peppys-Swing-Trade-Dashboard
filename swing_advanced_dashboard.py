@@ -5,8 +5,8 @@ import yfinance as yf
 import ta
 import numpy as np
 
-st.set_page_config(page_title="Swing Trade Signal Scanner", layout="wide")
-st.title("📈 Swing Trade Signal Dashboard")
+st.set_page_config(page_title="Swing Trade Scanner with OBV", layout="wide")
+st.title("📈 Swing Trade Signal Dashboard + OBV")
 
 tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
 interval = st.selectbox("Select interval", options=["1d", "1h", "15m"])
@@ -20,9 +20,7 @@ stop_loss_pct = 0.05
 entry_buffer_pct = 0.005
 
 def find_support_resistance_fallback(prices, window=10):
-    supports = []
-    resistances = []
-
+    supports, resistances = [], []
     prices = np.array(prices).flatten()
 
     for i in range(window, len(prices) - window):
@@ -33,8 +31,8 @@ def find_support_resistance_fallback(prices, window=10):
         if is_resistance:
             resistances.append(float(prices[i]))
 
-    supports = sorted(list(set(supports)))
-    resistances = sorted(list(set(resistances)))
+    supports = sorted(set(supports))
+    resistances = sorted(set(resistances))
 
     if supports and resistances:
         return supports[-1], resistances[0]
@@ -54,6 +52,7 @@ for ticker in tickers:
     close_series = df['Close']
     if isinstance(close_series, pd.DataFrame):
         close_series = close_series.squeeze()
+
     df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
     macd = ta.trend.MACD(close=close_series)
     df['MACD'] = macd.macd()
@@ -63,6 +62,8 @@ for ticker in tickers:
     df['SMA50'] = close_series.rolling(window=50).mean()
     df['SMA200'] = close_series.rolling(window=200).mean()
 
+    df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=close_series, volume=df["Volume"]).on_balance_volume()
+
     volume = df['Volume']
     volume_avg = volume.rolling(window=10).mean()
     volume, volume_avg = volume.align(volume_avg, join='inner')
@@ -71,8 +72,19 @@ for ticker in tickers:
     df['Volume'] = volume
     df['Volume_Avg'] = volume_avg
     df['Volume_Spike'] = volume > volume_avg
-    df.dropna(inplace=True)
 
+    if len(df["OBV"]) >= 6:
+        obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
+        if obv_diff > 0:
+            sentiment = "📈 Accumulating"
+        elif obv_diff < 0:
+            sentiment = "📉 Distributing"
+        else:
+            sentiment = "➖ Neutral"
+    else:
+        sentiment = "❓ Unknown"
+
+    df.dropna(inplace=True)
     if df.empty:
         continue
 
@@ -91,21 +103,17 @@ for ticker in tickers:
     target_price = entry_watch * (1 + profit_target_pct)
     stop_price = entry_watch * (1 - stop_loss_pct)
 
-    try:
-        price = latest['Close'].item()
-        sma50 = latest['SMA50'].item()
-        sma200 = latest['SMA200'].item()
-
-        if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
-            if price > sma50 and sma50 > sma200:
-                trend = "📈 Bullish"
-            elif price < sma50 and sma50 < sma200:
-                trend = "📉 Bearish"
-            else:
-                trend = "↔️ Neutral"
+    price = latest['Close'].item()
+    sma50 = latest['SMA50'].item()
+    sma200 = latest['SMA200'].item()
+    if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
+        if price > sma50 and sma50 > sma200:
+            trend = "📈 Bullish"
+        elif price < sma50 and sma50 < sma200:
+            trend = "📉 Bearish"
         else:
-            trend = "❓ Not enough data"
-    except:
+            trend = "↔️ Neutral"
+    else:
         trend = "❓ Not enough data"
 
     results.append({
@@ -123,6 +131,7 @@ for ticker in tickers:
         "Support": round(support, 2) if not np.isnan(support) else "N/A",
         "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
         "Trend": trend,
+        "Institutional Sentiment": sentiment,
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
