@@ -132,6 +132,7 @@ for ticker in tickers:
         "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
         "Trend": trend,
         "Institutional Sentiment": sentiment,
+        "OBV": int(latest["OBV"])
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
