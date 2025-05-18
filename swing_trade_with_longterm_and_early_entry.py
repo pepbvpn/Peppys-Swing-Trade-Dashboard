@@ -93,6 +93,24 @@ for ticker in tickers:
     price = latest['Close'].item()
     sma50 = latest['SMA50'].item()
     sma200 = latest['SMA200'].item()
+
+    if (
+        price > sma200 and
+        sma50 > sma200 and
+        "OBV" in df.columns and
+        latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
+    ):
+        longterm_signal = "✅ BUY & HOLD"
+    elif (
+        price > sma50 and
+        sma50 > sma200 * 0.9 and
+        "OBV" in df.columns and
+        latest["OBV"] > df["OBV"].rolling(window=10).mean().iloc[-1]
+    ):
+        longterm_signal = "🟡 Early Entry"
+    else:
+        longterm_signal = "❌ WAIT"
+
     if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
         if price > sma50 and sma50 > sma200:
             trend = "📈 Bullish"
@@ -118,24 +136,7 @@ for ticker in tickers:
         "Support": round(support, 2) if not np.isnan(support) else "N/A",
         "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
         "Trend": trend,
-        "Long-Term Signal": "✅ BUY & HOLD" if (
-            price > sma200 and
-            sma50 > sma200 and
-            "OBV" in df.columns and
-            latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
-        ) else (
-            "🟡 Early Entry" if (
-                price > sma50 and
-                sma50 > sma200 * 0.9 and
-                "OBV" in df.columns and
-                latest["OBV"] > df["OBV"].rolling(window=10).mean().iloc[-1]
-            ) else "❌ WAIT"
-        ),
-            price > sma200 and
-            sma50 > sma200 and
-            "OBV" in df.columns and
-            latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
-        ) else "❌ WAIT",
+        "Long-Term Signal": longterm_signal,
         "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
     })
 
