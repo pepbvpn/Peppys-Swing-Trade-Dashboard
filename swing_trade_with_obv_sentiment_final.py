@@ -8,13 +8,11 @@ st.set_page_config(page_title="Swing Trade Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Dashboard")
 
 tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
-interval = st.selectbox("Select interval", options=["15m", "1h", "1d", "5d", "7d"])
+interval = st.selectbox("Select interval", options=["15m", "1h", "1d"])
 period_map = {
     "15m": "10d",
     "1h": "60d",
-    "1d": "1y",
-    "5d": "2y",
-    "7d": "3y"
+    "1d": "1y"
 }
 period = period_map[interval]
 tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
@@ -170,3 +168,23 @@ for ticker in tickers:
             "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
             "Volume": int(float(latest['Volume'])),
             "Volume Spike": bool(latest['Volume_Spike'].item()),
+            "SMA50": safe_round(sma50),
+            "SMA200": safe_round(sma200),
+            "Support": safe_round(support),
+            "Resistance": safe_round(resistance),
+            "Trend": trend,
+            "Institutional Sentiment": sentiment,
+            "Long-Term Signal": longterm_signal,
+            "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
+        })
+
+    except Exception as e:
+        st.warning(f"⚠️ Skipped {ticker} due to error: {e}")
+
+df = pd.DataFrame(results)
+
+if not df.empty:
+    st.dataframe(df)
+    st.download_button("Download CSV", df.to_csv(index=False), file_name="swing_signals.csv")
+else:
+    st.info("No signals available for the selected tickers and interval.")
