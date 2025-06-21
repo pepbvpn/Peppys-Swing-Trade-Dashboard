@@ -9,8 +9,6 @@ st.title("📈 Swing Trade Signal Dashboard")
 
 tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
 interval = st.selectbox("Select interval", options=["15m", "1h", "1d", "5d", "7d"])
-
-# Map interval to corresponding data period
 period_map = {
     "15m": "10d",
     "1h": "60d",
@@ -19,12 +17,17 @@ period_map = {
     "7d": "3y"
 }
 period = period_map[interval]
-
 tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
 
 profit_target_pct = 0.10
 stop_loss_pct = 0.05
 entry_buffer_pct = 0.005
+
+def safe_round(val, digits=2):
+    try:
+        return round(float(val), digits)
+    except:
+        return "N/A"
 
 def find_support_resistance_fallback(prices, window=10):
     supports, resistances = [], []
@@ -101,85 +104,69 @@ for ticker in tickers:
     latest = df.iloc[-1]
     support, resistance = find_support_resistance_fallback(df['Close'].values)
 
-    entry_signal = (
-        latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
-        latest['MACD'].item() > latest['MACD_SIGNAL'].item() and
-        latest['Close'].item() > latest['20EMA'].item() and
-        latest['Close'].item() < latest['50EMA'].item() and
-        bool(latest['Volume_Spike'].item())
-    )
+    try:
+        entry_signal = (
+            latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
+            latest['MACD'].item() > latest['MACD_SIGNAL'].item() and
+            latest['Close'].item() > latest['20EMA'].item() and
+            latest['Close'].item() < latest['50EMA'].item() and
+            bool(latest['Volume_Spike'].item())
+        )
 
-    entry_watch = float(latest['High']) * (1 + entry_buffer_pct)
-    target_price = entry_watch * (1 + profit_target_pct)
-    stop_price = entry_watch * (1 - stop_loss_pct)
+        entry_watch = float(latest['High']) * (1 + entry_buffer_pct)
+        target_price = entry_watch * (1 + profit_target_pct)
+        stop_price = entry_watch * (1 - stop_loss_pct)
 
-    price = float(latest['Close'])
-    sma50 = float(latest['SMA50'])
-    sma200 = float(latest['SMA200'])
+        price = float(latest['Close'])
+        sma50 = float(latest['SMA50'])
+        sma200 = float(latest['SMA200'])
 
-    if (
-        price > sma200 and
-        sma50 > sma200 and
-        "OBV" in df.columns and
-        latest["OBV"].item() > df["OBV"].rolling(window=20).mean().iloc[-1]
-    ):
-        longterm_signal = "✅ BUY & HOLD"
-    elif (
-        price > sma50 and
-        sma50 > sma200 * 0.9 and
-        "OBV" in df.columns and
-        latest["OBV"].item() > df["OBV"].rolling(window=10).mean().iloc[-1]
-    ):
-        longterm_signal = "🟡 Early Entry"
-    else:
-        longterm_signal = "❌ WAIT"
-
-    # Determine institutional sentiment based on OBV trend
-    if "OBV" in df.columns and len(df["OBV"]) >= 6:
-        obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
-        if obv_diff > 0:
-            sentiment = "📈 Accumulating"
-        elif obv_diff < 0:
-            sentiment = "📉 Distributing"
+        if (
+            price > sma200 and
+            sma50 > sma200 and
+            "OBV" in df.columns and
+            latest["OBV"].item() > df["OBV"].rolling(window=20).mean().iloc[-1]
+        ):
+            longterm_signal = "✅ BUY & HOLD"
+        elif (
+            price > sma50 and
+            sma50 > sma200 * 0.9 and
+            "OBV" in df.columns and
+            latest["OBV"].item() > df["OBV"].rolling(window=10).mean().iloc[-1]
+        ):
+            longterm_signal = "🟡 Early Entry"
         else:
-            sentiment = "➖ Neutral"
-    else:
-        sentiment = "❓ Unknown"
+            longterm_signal = "❌ WAIT"
 
-    if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
-        if price > sma50 and sma50 > sma200:
-            trend = "📈 Bullish"
-        elif price < sma50 and sma50 < sma200:
-            trend = "📉 Bearish"
+        # Institutional Sentiment
+        if "OBV" in df.columns and len(df["OBV"]) >= 6:
+            obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
+            if obv_diff > 0:
+                sentiment = "📈 Accumulating"
+            elif obv_diff < 0:
+                sentiment = "📉 Distributing"
+            else:
+                sentiment = "➖ Neutral"
         else:
-            trend = "↔️ Neutral"
-    else:
-        trend = "❓ Not enough data"
+            sentiment = "❓ Unknown"
 
-    results.append({
-        "Ticker": ticker,
-        "Latest Close": round(price, 2),
-        "Entry Watch Price": round(entry_watch, 2),
-        "Sell Target (10%)": round(target_price, 2),
-        "Stop-Loss (5%)": round(stop_price, 2),
-        "RSI": round(latest['RSI'].item(), 2),
-        "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
-        "Volume": int(latest['Volume']),
-        "Volume Spike": bool(latest['Volume_Spike'].item()),
-        "SMA50": round(sma50, 2),
-        "SMA200": round(sma200, 2),
-        "Support": round(support, 2) if not np.isnan(support) else "N/A",
-        "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
-        "Trend": trend,
-        "Institutional Sentiment": sentiment,
-        "Long-Term Signal": longterm_signal,
-        "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
-    })
+        if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
+            if price > sma50 and sma50 > sma200:
+                trend = "📈 Bullish"
+            elif price < sma50 and sma50 < sma200:
+                trend = "📉 Bearish"
+            else:
+                trend = "↔️ Neutral"
+        else:
+            trend = "❓ Not enough data"
 
-df = pd.DataFrame(results)
-
-if not df.empty:
-    st.dataframe(df)
-    st.download_button("Download CSV", df.to_csv(index=False), file_name="swing_signals.csv")
-else:
-    st.info("No signals available for the selected tickers and interval.")
+        results.append({
+            "Ticker": ticker,
+            "Latest Close": safe_round(price),
+            "Entry Watch Price": safe_round(entry_watch),
+            "Sell Target (10%)": safe_round(target_price),
+            "Stop-Loss (5%)": safe_round(stop_price),
+            "RSI": safe_round(latest['RSI'].item()),
+            "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
+            "Volume": int(float(latest['Volume'])),
+            "Volume Spike": bool(latest['Volume_Spike'].item()),
