@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -78,67 +77,71 @@ for ticker in tickers:
     latest = df.iloc[-1]
     support, resistance = find_support_resistance_fallback(df['Close'].values)
 
-    entry_signal = (
-        latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
-        latest['MACD'].item() > latest['MACD_SIGNAL'].item() and
-        latest['Close'].item() > latest['20EMA'].item() and
-        latest['Close'].item() < latest['50EMA'].item() and
-        bool(latest['Volume_Spike'].item())
-    )
+    try:
+        entry_signal = (
+            latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
+            latest['MACD'].item() > latest['MACD_SIGNAL'].item() and
+            latest['Close'].item() > latest['20EMA'].item() and
+            latest['Close'].item() < latest['50EMA'].item() and
+            bool(latest['Volume_Spike'].item())
+        )
 
-    entry_watch = latest['High'] * (1 + entry_buffer_pct)
-    target_price = entry_watch * (1 + profit_target_pct)
-    stop_price = entry_watch * (1 - stop_loss_pct)
+        entry_watch = float(latest['High']) * (1 + entry_buffer_pct)
+        target_price = entry_watch * (1 + profit_target_pct)
+        stop_price = entry_watch * (1 - stop_loss_pct)
 
-    price = latest['Close'].item()
-    sma50 = latest['SMA50'].item()
-    sma200 = latest['SMA200'].item()
+        price = float(latest['Close'])
+        sma50 = float(latest['SMA50'])
+        sma200 = float(latest['SMA200'])
 
-    if (
-        price > sma200 and
-        sma50 > sma200 and
-        "OBV" in df.columns and
-        latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
-    ):
-        longterm_signal = "✅ BUY & HOLD"
-    elif (
-        price > sma50 and
-        sma50 > sma200 * 0.9 and
-        "OBV" in df.columns and
-        latest["OBV"] > df["OBV"].rolling(window=10).mean().iloc[-1]
-    ):
-        longterm_signal = "🟡 Early Entry"
-    else:
-        longterm_signal = "❌ WAIT"
-
-    if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
-        if price > sma50 and sma50 > sma200:
-            trend = "📈 Bullish"
-        elif price < sma50 and sma50 < sma200:
-            trend = "📉 Bearish"
+        if (
+            price > sma200 and
+            sma50 > sma200 and
+            "OBV" in df.columns and
+            latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
+        ):
+            longterm_signal = "✅ BUY & HOLD"
+        elif (
+            price > sma50 and
+            sma50 > sma200 * 0.9 and
+            "OBV" in df.columns and
+            latest["OBV"] > df["OBV"].rolling(window=10).mean().iloc[-1]
+        ):
+            longterm_signal = "🟡 Early Entry"
         else:
-            trend = "↔️ Neutral"
-    else:
-        trend = "❓ Not enough data"
+            longterm_signal = "❌ WAIT"
 
-    results.append({
-        "Ticker": ticker,
-        "Latest Close": round(price, 2),
-        "Entry Watch Price": round(entry_watch, 2),
-        "Sell Target (10%)": round(target_price, 2),
-        "Stop-Loss (5%)": round(stop_price, 2),
-        "RSI": round(latest['RSI'].item(), 2),
-        "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
-        "Volume": int(latest['Volume']),
-        "Volume Spike": bool(latest['Volume_Spike'].item()),
-        "SMA50": round(sma50, 2),
-        "SMA200": round(sma200, 2),
-        "Support": round(support, 2) if not np.isnan(support) else "N/A",
-        "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
-        "Trend": trend,
-        "Long-Term Signal": longterm_signal,
-        "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
-    })
+        if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
+            if price > sma50 and sma50 > sma200:
+                trend = "📈 Bullish"
+            elif price < sma50 and sma50 < sma200:
+                trend = "📉 Bearish"
+            else:
+                trend = "↔️ Neutral"
+        else:
+            trend = "❓ Not enough data"
+
+        results.append({
+            "Ticker": ticker,
+            "Latest Close": round(price, 2),
+            "Entry Watch Price": round(entry_watch, 2),
+            "Sell Target (10%)": round(target_price, 2),
+            "Stop-Loss (5%)": round(stop_price, 2),
+            "RSI": round(latest['RSI'].item(), 2),
+            "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
+            "Volume": int(latest['Volume']),
+            "Volume Spike": bool(latest['Volume_Spike'].item()),
+            "SMA50": round(sma50, 2),
+            "SMA200": round(sma200, 2),
+            "Support": round(support, 2) if not np.isnan(support) else "N/A",
+            "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
+            "Trend": trend,
+            "Long-Term Signal": longterm_signal,
+            "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
+        })
+
+    except Exception as e:
+        st.warning(f"⚠️ Skipped {ticker} due to error: {e}")
 
 df = pd.DataFrame(results)
 
