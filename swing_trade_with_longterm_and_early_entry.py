@@ -8,8 +8,16 @@ st.set_page_config(page_title="Swing Trade Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Dashboard")
 
 tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
-interval = st.selectbox("Select interval", options=["1d", "1h", "15m"])
-period_map = {"1d": "1y", "1h": "60d", "15m": "10d"}
+interval = st.selectbox("Select interval", options=["15m", "1h", "1d", "5d", "7d"])
+
+# Map interval to corresponding data period
+period_map = {
+    "15m": "10d",
+    "1h": "60d",
+    "1d": "1y",
+    "5d": "2y",
+    "7d": "3y"
+}
 period = period_map[interval]
 
 tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
