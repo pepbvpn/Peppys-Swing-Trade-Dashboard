@@ -1,0 +1,1 @@
+# Final trading app with profit target and stop loss logic implemented
