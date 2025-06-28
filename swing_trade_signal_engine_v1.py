@@ -3,42 +3,58 @@ import pandas as pd
 import ta
 
 def analyze(ticker, interval="1d", period="6mo"):
-    df = yf.download(ticker, interval=interval, period=period)
-    if df.empty or 'Close' not in df.columns or df['Close'].isna().all():
-        return f"❌ Skipping {ticker} — no valid data."
+    try:
+        df = yf.download(ticker, interval=interval, period=period)
+        if df.empty or 'Close' not in df.columns:
+            print(f"⚠️ Skipping {ticker} — no data.")
+            return None
 
-    df = df.dropna(subset=['Close']).copy()
-    df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
-    macd = ta.trend.MACD(df['Close'])
-    df['macd_cross'] = macd.macd() > macd.macd_signal()
-    df['sma_50'] = df['Close'].rolling(50).mean()
-    df['sma_200'] = df['Close'].rolling(200).mean()
-    df['golden_cross'] = df['sma_50'] > df['sma_200']
-    df['volume_spike'] = df['Volume'] > df['Volume'].rolling(20).mean() * 1.5
-    df['obv'] = ta.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume']).on_balance_volume()
-    df['obv_trend'] = df['obv'].diff().rolling(5).mean() > 0
+        df.dropna(subset=['Close'], inplace=True)
 
-    latest = df.iloc[-1]
-    score = sum([
-        latest['rsi'] < 35,
-        latest['macd_cross'],
-        latest['golden_cross'],
-        latest['volume_spike'],
-        latest['obv_trend']
-    ])
+        if len(df) < 200:
+            print(f"⚠️ Skipping {ticker} — not enough data.")
+            return None
 
-    return {
-        "Ticker": ticker,
-        "Price": round(latest['Close'], 2),
-        "RSI": round(latest['rsi'], 2),
-        "MACD > Signal": bool(latest['macd_cross']),
-        "Golden Cross": bool(latest['golden_cross']),
-        "Volume Spike": bool(latest['volume_spike']),
-        "OBV Trend Up": bool(latest['obv_trend']),
-        "Score": score
-    }
+        # Add technical indicators
+        df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
+        macd = ta.trend.MACD(df['Close'])
+        df['MACD_Cross'] = macd.macd_diff() > 0
+        df['SMA50'] = df['Close'].rolling(50).mean()
+        df['SMA200'] = df['Close'].rolling(200).mean()
+        df['GoldenCross'] = df['SMA50'] > df['SMA200']
+        df['VolSpike'] = df['Volume'] > df['Volume'].rolling(20).mean() * 1.5
+        obv = ta.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume'])
+        df['OBVTrend'] = obv.on_balance_volume().diff().rolling(5).mean() > 0
 
+        latest = df.iloc[-1]
+
+        score = sum([
+            latest['RSI'] < 35,
+            latest['MACD_Cross'],
+            latest['GoldenCross'],
+            latest['VolSpike'],
+            latest['OBVTrend']
+        ])
+
+        return {
+            "Ticker": ticker,
+            "Price": round(latest['Close'], 2),
+            "RSI": round(latest['RSI'], 2),
+            "MACD_Cross": bool(latest['MACD_Cross']),
+            "GoldenCross": bool(latest['GoldenCross']),
+            "VolSpike": bool(latest['VolSpike']),
+            "OBVTrend": bool(latest['OBVTrend']),
+            "TradeScore": score
+        }
+    except Exception as e:
+        print(f"❌ Error processing {ticker}: {e}")
+        return None
+
+# Try it on a few stocks
 tickers = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN"]
 results = [analyze(ticker) for ticker in tickers]
-df = pd.DataFrame([r for r in results if isinstance(r, dict)])
-print(df)
+results = [r for r in results if r]  # Remove None
+
+# Convert to DataFrame and show
+df_result = pd.DataFrame(results)
+print(df_result.sort_values("TradeScore", ascending=False))
