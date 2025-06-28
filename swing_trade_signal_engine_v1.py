@@ -21,15 +21,15 @@ if 'Close' not in df.columns:
 else:
     print("✅ 'Close' column found.")
 
-# Check for NaN in Close
-nan_count = df['Close'].isna().sum()
-if nan_count > 0:
-    print(f"⚠️ {nan_count} NaN values found in 'Close' column.")
-else:
-    print("✅ No NaNs in 'Close'.")
+    # Check for NaN in Close
+    nan_count = df['Close'].isna().sum()
+    if nan_count > 0:
+        print(f"⚠️ {nan_count} NaN values found in 'Close' column.")
+    else:
+        print("✅ No NaNs in 'Close'.")
 
-# Check number of rows (for SMA200 to work, need at least 200 rows)
-if len(df) < 200:
-    print(f"⚠️ Only {len(df)} rows — not enough for SMA(200).")
-else:
-    print("✅ Enough data for SMA(200).")
+    # Check number of rows (for SMA200 to work, need at least 200 rows)
+    if len(df) < 200:
+        print(f"⚠️ Only {len(df)} rows — not enough for SMA(200).")
+    else:
+        print("✅ Enough data for SMA(200).")
