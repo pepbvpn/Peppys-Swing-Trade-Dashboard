@@ -22,9 +22,12 @@ try:
 
         # Add Indicators
         df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
-        macd = ta.trend.MACD(df['Close'])
-        df['macd'] = macd.macd()
-        df['macd_signal'] = macd.macd_signal()
+
+        # Fix MACD shape issue
+        macd_calc = ta.trend.MACD(df['Close'])
+        df['macd'] = macd_calc.macd().values.flatten()
+        df['macd_signal'] = macd_calc.macd_signal().values.flatten()
+
         df['sma50'] = ta.trend.SMAIndicator(df['Close'], window=50).sma_indicator()
         df['sma200'] = ta.trend.SMAIndicator(df['Close'], window=200).sma_indicator()
 
