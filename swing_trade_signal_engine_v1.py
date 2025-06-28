@@ -3,17 +3,30 @@ import yfinance as yf
 import pandas as pd
 import ta
 
-st.set_page_config(page_title="📈 Swing Trade Scout", layout="wide")
+st.set_page_config(page_title="📊 Swing Trade Signal Engine")
+
 st.title("📊 Swing Trade Signal Engine")
 
-# Inputs
-ticker = st.text_input("Enter Stock Ticker", value="AAPL")
+ticker = st.text_input("Enter Stock Ticker", value="TSLA")
 interval = st.selectbox("Interval", ["1d", "1h", "15m"])
-period = st.selectbox("Period", ["6mo", "3mo", "1mo", "5d"])
+period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y"])
 
-# Helper to calculate signals
+def fetch_data(ticker, interval, period):
+    try:
+        df = yf.download(ticker, interval=interval, period=period)
+        return df
+    except Exception as e:
+        st.error(f"Failed to fetch data: {e}")
+        return pd.DataFrame()
+
 def analyze_signals(df):
-    if df.empty or 'Close' not in df.columns:
+    if df.empty:
+        st.error("❌ No data returned. Please check the ticker, interval, or period.")
+        return None
+
+    if 'Close' not in df.columns:
+        st.error("❌ 'Close' column not found in data. Try another interval or period.")
+        st.write("Available columns:", list(df.columns))
         return None
 
     df = df.dropna(subset=['Close']).copy()
@@ -26,13 +39,12 @@ def analyze_signals(df):
     df['sma50'] = ta.trend.SMAIndicator(df['Close'], window=50).sma_indicator()
     df['sma200'] = ta.trend.SMAIndicator(df['Close'], window=200).sma_indicator()
 
-    # Most recent values
     latest = df.iloc[-1]
     signals = {
-        "RSI Oversold (RSI < 30)": latest["rsi"] < 30,
-        "MACD Bullish Crossover": latest["macd"] > latest["macd_signal"],
-        "Price > SMA50": latest["Close"] > latest["sma50"],
-        "SMA50 > SMA200": latest["sma50"] > latest["sma200"]
+        "RSI < 30 (Oversold)": latest['rsi'] < 30,
+        "MACD > Signal": latest['macd'] > latest['macd_signal'],
+        "Price > SMA50": latest['Close'] > latest['sma50'],
+        "SMA50 > SMA200": latest['sma50'] > latest['sma200']
     }
 
     score = sum(signals.values())
@@ -45,19 +57,14 @@ def analyze_signals(df):
 
     return signals, score, rating, df.tail()
 
-# Scan Button
-if st.button("Run Scan"):
-    with st.spinner("Analyzing..."):
-        df = yf.download(ticker, interval=interval, period=period)
-        result = analyze_signals(df)
-
+if st.button("Analyze"):
+    df = fetch_data(ticker, interval, period)
+    result = analyze_signals(df)
     if result:
-        signals, score, rating, tail = result
-        st.subheader(f"📌 Signal Summary for **{ticker.upper()}**")
-        st.write(f"**Trade Readiness Score: {score}/4** → {rating}")
-        st.write(signals)
-        st.subheader("📉 Recent Price & Indicators")
-        st.dataframe(tail)
-        st.line_chart(df['Close'])
-    else:
-        st.error("Failed to analyze data. Try a different ticker or period.")
+        signals, score, rating, preview = result
+        st.subheader("🔍 Signal Breakdown")
+        for k, v in signals.items():
+            st.write(f"{k}: {'✅' if v else '❌'}")
+        st.markdown(f"### 🧠 Trade Readiness Score: {score}/4 — **{rating}**")
+        st.subheader("📈 Recent Data Preview")
+        st.dataframe(preview)
