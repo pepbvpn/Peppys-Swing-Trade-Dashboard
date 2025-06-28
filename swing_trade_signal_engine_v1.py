@@ -4,12 +4,12 @@ import ta
 import streamlit as st
 
 st.set_page_config(page_title="Swing Trading Signal Engine", layout="wide")
-st.title("📊 Swing Trading Signal Engine (v1.2)")
+st.title("📊 Swing Trading Signal Engine (v1.3)")
 
 def load_data(ticker, interval='1d', period='6mo'):
     df = yf.download(ticker, interval=interval, period=period)
     df.dropna(inplace=True)
-    df.name = ticker  # Tag the DataFrame with the ticker for later logging
+    df.name = ticker  # Tag the DataFrame with the ticker name
     return df
 
 def analyze(df):
@@ -19,8 +19,9 @@ def analyze(df):
     if 'Close' not in df.columns:
         st.warning(f"⚠️ Skipping {df.name} — 'Close' column missing.")
         return None
-    if df['Close'].isna().any():
-        st.warning(f"⚠️ Skipping {df.name} — missing values in 'Close' column.")
+    null_count = df['Close'].isna().sum()
+    if null_count > 0:
+        st.warning(f"⚠️ Skipping {df.name} — {null_count} missing values in 'Close'.")
         return None
 
     df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
@@ -70,9 +71,7 @@ def analyze(df):
 tickers = st.text_area("Enter Tickers (comma separated)", "AAPL,MSFT,NVDA,TSLA,AMZN").upper().split(',')
 interval = st.selectbox("Interval", ["1d", "1h", "15m"], index=0)
 
-analyze_button = st.button("🔍 Run Analysis")
-
-if analyze_button:
+if st.button("🔍 Run Analysis"):
     results = []
     for ticker in tickers:
         df = load_data(ticker.strip(), interval)
