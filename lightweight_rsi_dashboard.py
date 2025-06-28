@@ -1,44 +1,82 @@
-
-import streamlit as st
-import yfinance as yf
 import pandas as pd
+import numpy as np
 import ta
-import plotly.graph_objects as go
+import time
+import datetime
+import requests
+import streamlit as st
 
-# Streamlit setup
-st.set_page_config(page_title="Lightweight RSI Dashboard", layout="wide")
-st.title("📉 Quick RSI Check for Day Trading")
+# ========= CONFIG ========= #
+API_KEY = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"  # ← Your Finnhub API Key
+tickers = ['AAPL', 'MSFT', 'NVDA', 'AMD', 'TSLA', 'GOOGL', 'AMZN', 'META', 'NFLX', 'INTC']
 
-# Sidebar
-ticker = st.sidebar.text_input("Enter Ticker Symbol", value="AAPL")
-interval = st.sidebar.selectbox("Interval", ["5m", "15m", "1h"])
-period = st.sidebar.selectbox("Period", ["1d", "5d"])
+# ========= UI LAYOUT ========= #
+st.set_page_config(page_title="Day Trading Scout", layout="wide")
+st.title("📈 Smart Day Trading Scout - Buy Signal Detector")
 
-@st.cache_data
-def get_data(ticker, interval, period):
-    df = yf.download(ticker, interval=interval, period=period)
-    df.dropna(inplace=True)
+st.sidebar.header("Settings")
+interval = st.sidebar.selectbox("Interval (min)", ["5", "15", "30"], index=1)
+lookback_candles = st.sidebar.slider("Candles to Analyze", 50, 300, 100)
+scan_button = st.sidebar.button("🔍 Start Scan")
+
+# ========= DATA FETCH ========= #
+def fetch_ohlcv(symbol, resolution, count):
+    now = int(time.time())
+    past = now - (count * 60 * int(resolution))
+    url = f"https://finnhub.io/api/v1/stock/candle?symbol={symbol}&resolution={resolution}&from={past}&to={now}&token={API_KEY}"
+    res = requests.get(url).json()
+    if res.get("s") != "ok":
+        return pd.DataFrame()
+    df = pd.DataFrame({
+        't': pd.to_datetime(res['t'], unit='s'),
+        'o': res['o'],
+        'h': res['h'],
+        'l': res['l'],
+        'c': res['c'],
+        'v': res['v']
+    })
+    df.set_index('t', inplace=True)
     return df
 
-df = get_data(ticker, interval, period)
+# ========= INDICATOR LOGIC ========= #
+def analyze_stock(df):
+    if df.empty or len(df) < 30:
+        return None
+    df['rsi'] = ta.momentum.RSIIndicator(df['c']).rsi()
+    df['macd'] = ta.trend.MACD(df['c']).macd_diff()
+    df['vwap'] = (df['v'] * (df['h'] + df['l'] + df['c']) / 3).cumsum() / df['v'].cumsum()
+    df['vol_spike'] = df['v'] > df['v'].rolling(20).mean() * 1.5
 
-if df.empty:
-    st.error("No data returned. Try a different interval or period.")
-else:
-    df["RSI"] = ta.momentum.RSIIndicator(close=df["Close"]).rsi()
-    latest = df.iloc[-1]
-    rsi_value = latest["RSI"]
+    last = df.iloc[-1]
+    signals = {
+        "RSI < 35": last['rsi'] < 35,
+        "MACD > 0": last['macd'] > 0,
+        "Price > VWAP": last['c'] > last['vwap'],
+        "Volume Spike": last['vol_spike']
+    }
+    score = sum(signals.values())
+    return {
+        "Ticker": df.name,
+        "Price": round(last['c'], 2),
+        "Score": score,
+        **signals
+    }
 
-    st.subheader(f"📊 RSI for {ticker}")
-    st.markdown(f"**RSI:** {rsi_value:.2f}")
+# ========= RUN SCAN ========= #
+results = []
+if scan_button:
+    with st.spinner("Scanning tickers..."):
+        for symbol in tickers:
+            df = fetch_ohlcv(symbol, interval, lookback_candles)
+            df.name = symbol
+            data = analyze_stock(df)
+            if data:
+                results.append(data)
 
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(x=df.index,
-                                 open=df["Open"], high=df["High"],
-                                 low=df["Low"], close=df["Close"],
-                                 name="Price"))
-    fig.update_layout(title=f"{ticker} Price Chart", xaxis_title="Time", yaxis_title="Price", height=600)
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("📋 Data Preview")
-    st.dataframe(df.tail(10))
+    if results:
+        result_df = pd.DataFrame(results)
+        result_df.sort_values(by="Score", ascending=False, inplace=True)
+        st.success(f"Scan complete! Showing top results for {interval}min interval:")
+        st.dataframe(result_df, use_container_width=True)
+    else:
+        st.warning("No valid signals detected.")
