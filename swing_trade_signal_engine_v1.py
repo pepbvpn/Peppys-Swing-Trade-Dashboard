@@ -1,56 +1,53 @@
+import streamlit as st
 import pandas as pd
 import yfinance as yf
 import ta
-import streamlit as st
 
-st.set_page_config(page_title="Swing Trading Signal Engine", layout="wide")
-st.title("📊 Swing Trading Signal Engine (v1.4)")
+st.set_page_config(page_title="Swing Trade Signal Engine", layout="wide")
 
-# Safe loader with auto-adjusting period based on interval
-def load_data(ticker, interval='1d', period=None):
-    if interval == "1d":
-        period = "6mo"
-    elif interval == "1h":
-        period = "30d"
-    elif interval == "15m":
-        period = "7d"
-    df = yf.download(ticker, interval=interval, period=period)
-    df.dropna(inplace=True)
-    df.name = ticker  # Store ticker for later reference
-    return df
+st.title("📊 Swing Trade Signal Engine")
+st.caption("Uses RSI, MACD, SMA, Volume, VWAP, and OBV to generate a Trade Readiness Score")
 
-# Main analysis function
+# ---- SETTINGS ----
+TICKERS = st.multiselect(
+    "Select tickers to scan",
+    options=['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN'],
+    default=['AAPL', 'MSFT', 'NVDA']
+)
+
+INTERVAL = st.selectbox("Interval", ["1d", "1h", "15m"])
+LOOKBACK = 150
+
+# ---- ANALYSIS FUNCTION ----
 def analyze(df):
-    if df.empty:
-        st.warning(f"⚠️ Skipping {df.name} — no data.")
+    if df.empty or 'Close' not in df.columns:
+        st.warning(f"⚠️ Skipping {df.name} — no data or missing 'Close' column.")
         return None
 
-    close_series = df.get('Close')
-    if close_series is None:
-        st.warning(f"⚠️ Skipping {df.name} — 'Close' column missing.")
+    df = df.dropna(subset=['Close']).copy()
+
+    if len(df) < 50:
+        st.warning(f"⚠️ Skipping {df.name} — not enough data ({len(df)} rows).")
         return None
 
-    null_count = int(close_series.isna().sum())
-    if null_count > 0:
-        st.warning(f"⚠️ Skipping {df.name} — {null_count} missing values in 'Close'.")
+    try:
+        df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
+        macd = ta.trend.MACD(df['Close'])
+        df['macd'] = macd.macd()
+        df['signal'] = macd.macd_signal()
+        df['macd_cross'] = df['macd'] > df['signal']
+        df['sma_50'] = df['Close'].rolling(window=50).mean()
+        df['sma_200'] = df['Close'].rolling(window=200).mean()
+        df['golden_cross'] = df['sma_50'] > df['sma_200']
+        df['volume_spike'] = df['Volume'] > df['Volume'].rolling(20).mean() * 1.5
+        df['vwap'] = (df['High'] + df['Low'] + df['Close']) / 3
+        df['above_vwap'] = df['Close'] > df['vwap']
+        df['obv'] = ta.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume']).on_balance_volume()
+        df['obv_trend'] = df['obv'].diff().rolling(5).mean() > 0
+    except Exception as e:
+        st.warning(f"⚠️ Skipping {df.name} — indicator error: {e}")
         return None
 
-    # Technical Indicators
-    df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
-    macd = ta.trend.MACD(df['Close'])
-    df['macd'] = macd.macd()
-    df['signal'] = macd.macd_signal()
-    df['macd_cross'] = df['macd'] > df['signal']
-    df['sma_50'] = df['Close'].rolling(window=50).mean()
-    df['sma_200'] = df['Close'].rolling(window=200).mean()
-    df['golden_cross'] = df['sma_50'] > df['sma_200']
-    df['volume_spike'] = df['Volume'] > df['Volume'].rolling(20).mean() * 1.5
-    df['vwap'] = (df['High'] + df['Low'] + df['Close']) / 3
-    df['above_vwap'] = df['Close'] > df['vwap']
-    df['obv'] = ta.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume']).on_balance_volume()
-    df['obv_trend'] = df['obv'].diff().rolling(5).mean() > 0
-
-    # Trade Readiness Score
     latest = df.iloc[-1]
     score = sum([
         latest['rsi'] < 35,
@@ -80,21 +77,23 @@ def analyze(df):
         "Signal": label
     }
 
-# UI
-tickers = st.text_area("Enter Tickers (comma separated)", "AAPL,MSFT,NVDA,TSLA,AMZN").upper().split(',')
-interval = st.selectbox("Interval", ["1d", "1h", "15m"], index=0)
+# ---- RUN ANALYSIS ----
+results = []
 
-if st.button("🔍 Run Analysis"):
-    results = []
-    for ticker in tickers:
-        df = load_data(ticker.strip(), interval)
-        analysis = analyze(df)
-        if analysis:
-            analysis["Ticker"] = ticker.strip()
-            results.append(analysis)
-    if results:
-        df_result = pd.DataFrame(results).set_index("Ticker")
-        st.success("✅ Analysis Complete")
-        st.dataframe(df_result)
-    else:
-        st.warning("No valid signals found.")
+for ticker in TICKERS:
+    try:
+        df = yf.download(ticker, period="6mo", interval=INTERVAL)
+        df.name = ticker
+        result = analyze(df)
+        if result:
+            result["Ticker"] = ticker
+            results.append(result)
+    except Exception as e:
+        st.error(f"❌ Error loading {ticker}: {e}")
+
+# ---- DISPLAY RESULTS ----
+if results:
+    df_results = pd.DataFrame(results).sort_values(by="Score", ascending=False)
+    st.dataframe(df_results.set_index("Ticker"))
+else:
+    st.info("No valid signals found.")
