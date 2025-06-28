@@ -9,33 +9,33 @@ import plotly.graph_objects as go
 API_KEY = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
 client = finnhub.Client(api_key=API_KEY)
 
-# Load US tickers (first 100 from S&P 500 list as demo)
+# Load tickers (demo: top 100 US stocks)
 tickers_df = pd.read_csv("https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv")
 tickers = [t.replace('.', '-') for t in tickers_df["Symbol"].tolist()[:100]]
 
-st.title("🚀 Full Market Screener with Finnhub")
-st.caption("Scans top US stocks for early buy signals + bullish patterns")
+st.title("📈 US Market Screener (Finnhub + Patterns)")
+st.caption("Scans for early momentum signals and bullish chart patterns")
 
-# --- Fetch candle data ---
+# --- Candle Data Function (Fixed for 'D') ---
 def get_finnhub_data(symbol, resolution='15', count=100):
+    res_map = {'1': 60, '5': 300, '15': 900, '30': 1800, '60': 3600, 'D': 86400}
+    duration = res_map.get(resolution, 900)
     now = int(time.time())
-    past = now - count * 60 * int(resolution)
+    past = now - count * duration
     try:
         res = client.stock_candles(symbol, resolution, past, now)
         if res.get('s') != 'ok':
-            st.warning(f"{symbol}: No valid candle data returned.")
             return pd.DataFrame()
-
         df = pd.DataFrame(res)
         df['t'] = pd.to_datetime(df['t'], unit='s')
         df.set_index('t', inplace=True)
         df.rename(columns={'c': 'Close', 'o': 'Open', 'h': 'High', 'l': 'Low', 'v': 'Volume'}, inplace=True)
         return df[['Open', 'High', 'Low', 'Close', 'Volume']]
     except Exception as e:
-        st.error(f"{symbol}: {str(e)}")
+        print(f"[{symbol}] error: {e}")
         return pd.DataFrame()
 
-# --- Chart pattern detection ---
+# --- Pattern Detection ---
 def detect_double_bottom(prices):
     lows = prices.rolling(window=3).min()
     low_points = lows[lows == prices]
@@ -55,7 +55,7 @@ def is_bullish_flag(prices, volume):
     vol_before = volume[-15:-5].mean()
     return move_up > 0.05 and pullback > -0.03 and vol_now < vol_before
 
-# --- Main analysis function ---
+# --- Stock Analyzer ---
 def analyze_stock(ticker):
     score = 0
     patterns = []
@@ -65,7 +65,7 @@ def analyze_stock(ticker):
 
     for label, resolution in [("15m", '15'), ("1h", '60'), ("1d", 'D')]:
         df = get_finnhub_data(ticker, resolution=resolution)
-        time.sleep(1.1)  # prevent rate limit
+        time.sleep(1.1)  # stay within 60 req/min
         if df.empty or len(df) < 50:
             continue
 
@@ -117,7 +117,7 @@ def analyze_stock(ticker):
         "Data": data_all
     }
 
-# --- Run Analysis ---
+# --- Run Screener ---
 results = []
 with st.spinner("Scanning top US stocks..."):
     for ticker in tickers:
@@ -126,16 +126,19 @@ with st.spinner("Scanning top US stocks..."):
             if res and res["Signal"] != "🔴 No Signal":
                 results.append(res)
         except Exception as e:
-            st.error(f"{ticker} failed: {e}")
+            if "403" in str(e):
+                print(f"[{ticker}] restricted by plan.")
+            else:
+                print(f"[{ticker}] failed: {e}")
             continue
 
-# --- Show Results ---
+# --- Display Results ---
 if results:
     df = pd.DataFrame(results)
     st.dataframe(df[["Ticker", "Price", "Signal", "Patterns", "Details"]])
 
     for r in results:
-        with st.expander(f"📈 {r['Ticker']} Chart (1h)"):
+        with st.expander(f"📊 {r['Ticker']} Chart (1h)"):
             d = r["Data"].get("1h")
             if d is not None:
                 fig = go.Figure()
@@ -145,4 +148,4 @@ if results:
                 fig.update_layout(title=f"{r['Ticker']} (1h)", xaxis_title="Time", yaxis_title="Price")
                 st.plotly_chart(fig)
 else:
-    st.warning("No early buy signals found at this time.")
+    st.warning("No early signals found right now.")
