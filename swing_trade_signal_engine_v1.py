@@ -1,37 +1,17 @@
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import ta
-
-st.set_page_config(page_title="📊 Swing Trade Signal Engine")
-
-st.title("📊 Swing Trade Signal Engine")
-
-ticker = st.text_input("Enter Stock Ticker", value="TSLA")
-interval = st.selectbox("Interval", ["1d", "1h", "15m"])
-period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y"])
-
-def fetch_data(ticker, interval, period):
-    try:
-        df = yf.download(ticker, interval=interval, period=period)
-        return df
-    except Exception as e:
-        st.error(f"Failed to fetch data: {e}")
-        return pd.DataFrame()
-
 def analyze_signals(df):
     if df.empty:
         st.error("❌ No data returned. Please check the ticker, interval, or period.")
         return None
 
     if 'Close' not in df.columns:
-        st.error("❌ 'Close' column not found in data. Try another interval or period.")
-        st.write("Available columns:", list(df.columns))
+        st.error("❌ 'Close' column missing. Try a different interval or period.")
+        st.write("Columns found:", list(df.columns))
         return None
 
-    df = df.dropna(subset=['Close']).copy()
+    df = df.copy()
+    df = df.dropna(subset=['Close'])
 
-    # Indicators
+    # Technical Indicators
     df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
     macd = ta.trend.MACD(df['Close'])
     df['macd'] = macd.macd()
@@ -56,15 +36,3 @@ def analyze_signals(df):
         rating = "❌ Skip for Now"
 
     return signals, score, rating, df.tail()
-
-if st.button("Analyze"):
-    df = fetch_data(ticker, interval, period)
-    result = analyze_signals(df)
-    if result:
-        signals, score, rating, preview = result
-        st.subheader("🔍 Signal Breakdown")
-        for k, v in signals.items():
-            st.write(f"{k}: {'✅' if v else '❌'}")
-        st.markdown(f"### 🧠 Trade Readiness Score: {score}/4 — **{rating}**")
-        st.subheader("📈 Recent Data Preview")
-        st.dataframe(preview)
