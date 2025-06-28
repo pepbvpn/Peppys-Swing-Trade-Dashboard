@@ -1,4 +1,3 @@
-
 import pandas as pd
 import yfinance as yf
 import ta
@@ -14,7 +13,7 @@ def load_data(ticker, interval='1d', period='6mo'):
     return df
 
 def analyze(df):
-    if df.empty or 'Close' not in df or df['Close'].isnull().any():
+    if df.empty or 'Close' not in df.columns or df['Close'].isna().sum() > 0:
         st.warning(f"⚠️ Skipping {df.name} due to missing or invalid data.")
         return None
 
@@ -61,6 +60,7 @@ def analyze(df):
         "Signal": label
     }
 
+# UI elements
 tickers = st.text_area("Enter Tickers (comma separated)", "AAPL,MSFT,NVDA,TSLA,AMZN").upper().split(',')
 interval = st.selectbox("Interval", ["1d", "1h", "15m"], index=0)
 
@@ -80,4 +80,3 @@ if analyze_button:
         st.dataframe(df_result)
     else:
         st.warning("No valid signals found.")
-
