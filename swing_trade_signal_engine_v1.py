@@ -5,15 +5,17 @@ import ta
 import streamlit as st
 
 st.set_page_config(page_title="Swing Trading Signal Engine", layout="wide")
-st.title("📊 Swing Trading Signal Engine (v1)")
+st.title("📊 Swing Trading Signal Engine (v1.1)")
 
 def load_data(ticker, interval='1d', period='6mo'):
     df = yf.download(ticker, interval=interval, period=period)
     df.dropna(inplace=True)
+    df.name = ticker  # Add ticker name for logging
     return df
 
 def analyze(df):
-    if df.empty or len(df) < 50:
+    if df.empty or 'Close' not in df or df['Close'].isnull().any():
+        st.warning(f"⚠️ Skipping {df.name} due to missing or invalid data.")
         return None
 
     df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
@@ -78,3 +80,4 @@ if analyze_button:
         st.dataframe(df_result)
     else:
         st.warning("No valid signals found.")
+
