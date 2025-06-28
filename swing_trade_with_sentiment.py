@@ -1,4 +1,4 @@
-import streamlit as st
+ import streamlit as st
 import pandas as pd
 import finnhub
 import time
@@ -9,14 +9,21 @@ import plotly.graph_objects as go
 API_KEY = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
 client = finnhub.Client(api_key=API_KEY)
 
-# Load tickers (demo: top 100 US stocks)
+# Load all tickers (S&P 500)
 tickers_df = pd.read_csv("https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv")
-tickers = [t.replace('.', '-') for t in tickers_df["Symbol"].tolist()[:100]]
+tickers_all = [t.replace('.', '-') for t in tickers_df["Symbol"].tolist()]
 
-st.title("📈 US Market Screener (Finnhub + Patterns)")
-st.caption("Scans for early momentum signals and bullish chart patterns")
+# Sidebar: select batch
+st.sidebar.title("🔁 Batch Control")
+batch_size = 100
+num_batches = len(tickers_all) // batch_size + 1
+batch_index = st.sidebar.slider("Select Batch #", 1, num_batches)
+tickers = tickers_all[(batch_index - 1) * batch_size : batch_index * batch_size]
 
-# --- Candle Data Function (Fixed for 'D') ---
+st.title("📈 US Market Screener (Finnhub + 500+ Support)")
+st.caption("Scans batches of 100 US stocks for early signals and bullish patterns")
+
+# --- Candle Fetch ---
 def get_finnhub_data(symbol, resolution='15', count=100):
     res_map = {'1': 60, '5': 300, '15': 900, '30': 1800, '60': 3600, 'D': 86400}
     duration = res_map.get(resolution, 900)
@@ -65,7 +72,7 @@ def analyze_stock(ticker):
 
     for label, resolution in [("15m", '15'), ("1h", '60'), ("1d", 'D')]:
         df = get_finnhub_data(ticker, resolution=resolution)
-        time.sleep(1.1)  # stay within 60 req/min
+        time.sleep(1.1)  # Respect 60/min rate limit
         if df.empty or len(df) < 50:
             continue
 
@@ -117,35 +124,38 @@ def analyze_stock(ticker):
         "Data": data_all
     }
 
-# --- Run Screener ---
-results = []
-with st.spinner("Scanning top US stocks..."):
-    for ticker in tickers:
-        try:
-            res = analyze_stock(ticker)
-            if res and res["Signal"] != "🔴 No Signal":
-                results.append(res)
-        except Exception as e:
-            if "403" in str(e):
-                print(f"[{ticker}] restricted by plan.")
-            else:
-                print(f"[{ticker}] failed: {e}")
-            continue
+# --- Manual Start ---
+if st.sidebar.button("🚀 Start Scan"):
+    results = []
+    with st.spinner("Scanning... Please wait."):
+        for ticker in tickers:
+            try:
+                res = analyze_stock(ticker)
+                if res and res["Signal"] != "🔴 No Signal":
+                    results.append(res)
+            except Exception as e:
+                if "403" in str(e):
+                    print(f"[{ticker}] blocked by Finnhub plan.")
+                else:
+                    print(f"[{ticker}] failed: {e}")
+                continue
 
-# --- Display Results ---
-if results:
-    df = pd.DataFrame(results)
-    st.dataframe(df[["Ticker", "Price", "Signal", "Patterns", "Details"]])
+    if results:
+        df = pd.DataFrame(results)
+        st.success(f"✅ {len(results)} stocks flagged with signals")
+        st.dataframe(df[["Ticker", "Price", "Signal", "Patterns", "Details"]])
 
-    for r in results:
-        with st.expander(f"📊 {r['Ticker']} Chart (1h)"):
-            d = r["Data"].get("1h")
-            if d is not None:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=d.index, y=d['Close'], mode='lines', name='Close'))
-                fig.add_trace(go.Scatter(x=d.index, y=d['MACD'], mode='lines', name='MACD'))
-                fig.add_trace(go.Scatter(x=d.index, y=d['Signal'], mode='lines', name='Signal Line'))
-                fig.update_layout(title=f"{r['Ticker']} (1h)", xaxis_title="Time", yaxis_title="Price")
-                st.plotly_chart(fig)
+        for r in results:
+            with st.expander(f"📈 {r['Ticker']} Chart (1h)"):
+                d = r["Data"].get("1h")
+                if d is not None:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=d.index, y=d['Close'], mode='lines', name='Close'))
+                    fig.add_trace(go.Scatter(x=d.index, y=d['MACD'], mode='lines', name='MACD'))
+                    fig.add_trace(go.Scatter(x=d.index, y=d['Signal'], mode='lines', name='Signal Line'))
+                    fig.update_layout(title=f"{r['Ticker']} (1h)", xaxis_title="Time", yaxis_title="Price")
+                    st.plotly_chart(fig)
+    else:
+        st.info("No early buy signals found in this batch.")
 else:
-    st.warning("No early signals found right now.")
+    st.info("Select a batch and click 'Start Scan' to begin.")
