@@ -4,26 +4,38 @@ import ta
 import streamlit as st
 
 st.set_page_config(page_title="Swing Trading Signal Engine", layout="wide")
-st.title("📊 Swing Trading Signal Engine (v1.3)")
+st.title("📊 Swing Trading Signal Engine (v1.4)")
 
-def load_data(ticker, interval='1d', period='6mo'):
+# Safe loader with auto-adjusting period based on interval
+def load_data(ticker, interval='1d', period=None):
+    if interval == "1d":
+        period = "6mo"
+    elif interval == "1h":
+        period = "30d"
+    elif interval == "15m":
+        period = "7d"
     df = yf.download(ticker, interval=interval, period=period)
     df.dropna(inplace=True)
-    df.name = ticker  # Tag the DataFrame with the ticker name
+    df.name = ticker  # Store ticker for later reference
     return df
 
+# Main analysis function
 def analyze(df):
     if df.empty:
         st.warning(f"⚠️ Skipping {df.name} — no data.")
         return None
-    if 'Close' not in df.columns:
+
+    close_series = df.get('Close')
+    if close_series is None:
         st.warning(f"⚠️ Skipping {df.name} — 'Close' column missing.")
         return None
-    null_count = df['Close'].isna().sum()
+
+    null_count = int(close_series.isna().sum())
     if null_count > 0:
         st.warning(f"⚠️ Skipping {df.name} — {null_count} missing values in 'Close'.")
         return None
 
+    # Technical Indicators
     df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
     macd = ta.trend.MACD(df['Close'])
     df['macd'] = macd.macd()
@@ -38,6 +50,7 @@ def analyze(df):
     df['obv'] = ta.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume']).on_balance_volume()
     df['obv_trend'] = df['obv'].diff().rolling(5).mean() > 0
 
+    # Trade Readiness Score
     latest = df.iloc[-1]
     score = sum([
         latest['rsi'] < 35,
@@ -67,7 +80,7 @@ def analyze(df):
         "Signal": label
     }
 
-# UI: Ticker input and interval
+# UI
 tickers = st.text_area("Enter Tickers (comma separated)", "AAPL,MSFT,NVDA,TSLA,AMZN").upper().split(',')
 interval = st.selectbox("Interval", ["1d", "1h", "15m"], index=0)
 
