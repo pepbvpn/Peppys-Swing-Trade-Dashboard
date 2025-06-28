@@ -5,3 +5,4 @@ pandas_ta
 matplotlib
 ta
 plotly
+lxml
