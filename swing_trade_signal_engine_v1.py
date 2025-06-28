@@ -4,17 +4,23 @@ import ta
 import streamlit as st
 
 st.set_page_config(page_title="Swing Trading Signal Engine", layout="wide")
-st.title("📊 Swing Trading Signal Engine (v1.1)")
+st.title("📊 Swing Trading Signal Engine (v1.2)")
 
 def load_data(ticker, interval='1d', period='6mo'):
     df = yf.download(ticker, interval=interval, period=period)
     df.dropna(inplace=True)
-    df.name = ticker  # Add ticker name for logging
+    df.name = ticker  # Tag the DataFrame with the ticker for later logging
     return df
 
 def analyze(df):
-    if df.empty or 'Close' not in df.columns or df['Close'].isna().sum() > 0:
-        st.warning(f"⚠️ Skipping {df.name} due to missing or invalid data.")
+    if df.empty:
+        st.warning(f"⚠️ Skipping {df.name} — no data.")
+        return None
+    if 'Close' not in df.columns:
+        st.warning(f"⚠️ Skipping {df.name} — 'Close' column missing.")
+        return None
+    if df['Close'].isna().any():
+        st.warning(f"⚠️ Skipping {df.name} — missing values in 'Close' column.")
         return None
 
     df['rsi'] = ta.momentum.RSIIndicator(df['Close']).rsi()
@@ -60,7 +66,7 @@ def analyze(df):
         "Signal": label
     }
 
-# UI elements
+# UI: Ticker input and interval
 tickers = st.text_area("Enter Tickers (comma separated)", "AAPL,MSFT,NVDA,TSLA,AMZN").upper().split(',')
 interval = st.selectbox("Interval", ["1d", "1h", "15m"], index=0)
 
