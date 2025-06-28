@@ -2,24 +2,43 @@ import pandas as pd
 import numpy as np
 import ta
 import time
-import datetime
 import requests
 import streamlit as st
+from math import ceil
 
 # ========= CONFIG ========= #
-API_KEY = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"  # ← Your Finnhub API Key
-tickers = ['AAPL', 'MSFT', 'NVDA', 'AMD', 'TSLA', 'GOOGL', 'AMZN', 'META', 'NFLX', 'INTC']
+API_KEY = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
 
-# ========= UI LAYOUT ========= #
+# ========= UI ========= #
 st.set_page_config(page_title="Day Trading Scout", layout="wide")
-st.title("📈 Smart Day Trading Scout - Buy Signal Detector")
+st.title("📈 Smart Day Trading Scout – S&P 500 Scanner")
 
 st.sidebar.header("Settings")
-interval = st.sidebar.selectbox("Interval (min)", ["5", "15", "30"], index=1)
+interval = st.sidebar.selectbox("Time Interval", ["5", "15", "30"], index=1)
 lookback_candles = st.sidebar.slider("Candles to Analyze", 50, 300, 100)
+
+# ========= LOAD S&P 500 ========= #
+@st.cache_data
+def load_sp500():
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    df = pd.read_html(url)[0]
+    return df["Symbol"].tolist()
+
+tickers = load_sp500()
+
+# ========= BATCHING ========= #
+batch_size = 50
+num_batches = ceil(len(tickers) / batch_size)
+selected_batch = st.sidebar.selectbox(
+    "Select Batch (Each ~50 tickers)",
+    options=[f"Batch {i+1}" for i in range(num_batches)]
+)
+batch_index = int(selected_batch.split(" ")[1]) - 1
+current_batch = tickers[batch_index * batch_size : (batch_index + 1) * batch_size]
+
 scan_button = st.sidebar.button("🔍 Start Scan")
 
-# ========= DATA FETCH ========= #
+# ========= FETCH FROM FINNHUB ========= #
 def fetch_ohlcv(symbol, resolution, count):
     now = int(time.time())
     past = now - (count * 60 * int(resolution))
@@ -38,7 +57,7 @@ def fetch_ohlcv(symbol, resolution, count):
     df.set_index('t', inplace=True)
     return df
 
-# ========= INDICATOR LOGIC ========= #
+# ========= ANALYSIS ========= #
 def analyze_stock(df):
     if df.empty or len(df) < 30:
         return None
@@ -62,21 +81,23 @@ def analyze_stock(df):
         **signals
     }
 
-# ========= RUN SCAN ========= #
+# ========= SCAN ========= #
 results = []
 if scan_button:
     with st.spinner("Scanning tickers..."):
-        for symbol in tickers:
+        for i, symbol in enumerate(current_batch):
+            st.sidebar.write(f"{i+1}/{len(current_batch)} scanning: {symbol}")
             df = fetch_ohlcv(symbol, interval, lookback_candles)
             df.name = symbol
             data = analyze_stock(df)
             if data:
                 results.append(data)
+            time.sleep(1)  # Prevent hitting Finnhub API limit (60 req/min)
 
     if results:
         result_df = pd.DataFrame(results)
         result_df.sort_values(by="Score", ascending=False, inplace=True)
-        st.success(f"Scan complete! Showing top results for {interval}min interval:")
+        st.success(f"Scan complete! Showing results for {selected_batch}")
         st.dataframe(result_df, use_container_width=True)
     else:
-        st.warning("No valid signals detected.")
+        st.warning("No valid signals found.")
