@@ -6,3 +6,4 @@ matplotlib
 ta
 plotly
 lxml
+finnhub
