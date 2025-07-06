@@ -13,6 +13,7 @@ st_autorefresh(interval=120000, limit=None, key="refresh")
 
 # --- User Inputs ---
 ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
+
 # --- Show Current Price ---
 if ticker:
     try:
@@ -22,12 +23,12 @@ if ticker:
             st.subheader(f"📌 Current Market Price of {ticker.upper()}: ${round(current_price, 2)}")
     except:
         st.warning("Could not fetch current price. Try another ticker.")
+
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
 intervals = ["15m", "1h", "1d"]
 
 # --- Function to Compute Indicators ---
 def compute_indicators(data):
-    # RSI
     delta = data['Close'].diff()
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
@@ -36,23 +37,19 @@ def compute_indicators(data):
     rs = avg_gain / avg_loss
     data['RSI'] = 100 - (100 / (1 + rs))
 
-    # MACD
     ema12 = data['Close'].ewm(span=12, adjust=False).mean()
     ema26 = data['Close'].ewm(span=26, adjust=False).mean()
     data['MACD'] = ema12 - ema26
     data['Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
 
-    # VWAP
     data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
     data['VP'] = data['TP'] * data['Volume']
     data['Cumulative_VP'] = data['VP'].cumsum()
     data['Cumulative_Volume'] = data['Volume'].cumsum()
     data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
-    # SMA
     data['SMA_50'] = data['Close'].rolling(window=50).mean()
     data['SMA_200'] = data['Close'].rolling(window=200).mean()
-
     return data
 
 # --- Function to Detect Support and Resistance ---
@@ -88,6 +85,9 @@ for interval in intervals:
 
     # Support/Resistance
     support, resistance = get_support_resistance(df)
+    price = latest['Close']
+    near_support = "Yes" if not np.isnan(support) and price <= support * 1.02 else "No"
+    near_resistance = "Yes" if not np.isnan(resistance) and price >= resistance * 0.98 else "No"
 
     # Signal Logic
     signals = {
@@ -95,17 +95,17 @@ for interval in intervals:
                                (option_type == "PUT" and latest['RSI'] > 70) else "❌",
         "MACD Signal": "✅" if (option_type == "CALL" and latest['MACD'] > latest['Signal']) or
                                 (option_type == "PUT" and latest['MACD'] < latest['Signal']) else "❌",
-        "VWAP Signal": "✅" if (option_type == "CALL" and latest['Close'] > latest['VWAP']) or
-                                (option_type == "PUT" and latest['Close'] < latest['VWAP']) else "❌",
-        "SMA Trend": "✅" if (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or
-                               (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200']) else "❌"
+        "VWAP Signal": "✅" if (option_type == "CALL" and price > latest['VWAP']) or
+                                (option_type == "PUT" and price < latest['VWAP']) else "❌",
+        "SMA Trend": "✅" if (option_type == "CALL" and price > latest['SMA_50'] > latest['SMA_200']) or
+                               (option_type == "PUT" and price < latest['SMA_50'] < latest['SMA_200']) else "❌"
     }
 
     score = list(signals.values()).count("✅")
 
     results.append({
         "Interval": interval,
-        "Close": round(latest['Close'], 2),
+        "Close": round(price, 2),
         "RSI": round(latest['RSI'], 2),
         "MACD": round(latest['MACD'], 3),
         "Signal": round(latest['Signal'], 3),
@@ -114,6 +114,8 @@ for interval in intervals:
         "SMA_200": round(latest['SMA_200'], 2),
         "Support": support,
         "Resistance": resistance,
+        "Near Support": near_support,
+        "Near Resistance": near_resistance,
         **signals,
         "Trade Readiness Score": f"{score}/4"
     })
