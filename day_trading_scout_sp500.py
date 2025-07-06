@@ -13,7 +13,7 @@ st_autorefresh(interval=120000, limit=None, key="refresh")
 # --- User Inputs ---
 ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
-intervals = ["15m", "1h"]
+intervals = ["15m", "1h", "1d"]
 
 # --- Function to Compute Indicators ---
 def compute_indicators(data):
@@ -58,6 +58,8 @@ for interval in intervals:
         period = "10d"   # Now has enough candles for SMA 200
     elif interval == "1h":
         period = "30d"   # Already sufficient for SMA 200
+    elif interval == "1d":
+        period = "1y"
 
     df = yf.download(ticker, interval=interval, period=period, progress=False)
 
