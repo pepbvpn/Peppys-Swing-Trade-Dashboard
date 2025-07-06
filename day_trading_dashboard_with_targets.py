@@ -5,7 +5,7 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Day Trade Signal App", layout="wide")
-st.title("📊 Peppy's Day Trading Signal Scanner")
+st.title("📊 Day Trading Signal Scanner")
 
 # 🔁 Auto-refresh every 2 minutes
 st_autorefresh(interval=120000, limit=None, key="refresh")
@@ -35,9 +35,12 @@ def compute_indicators(data):
     data['Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
 
     data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
-    data['VP'] = data['TP'] * data['Volume']
+    volume = data['Volume']
+    if isinstance(volume, pd.DataFrame):
+        volume = volume.iloc[:, 0]
+    data['VP'] = data['TP'] * volume
     data['Cumulative_VP'] = data['VP'].cumsum()
-    data['Cumulative_Volume'] = data['Volume'].cumsum()
+    data['Cumulative_Volume'] = volume.cumsum()
     data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
     data['SMA_50'] = data['Close'].rolling(window=50).mean()
@@ -60,7 +63,6 @@ for ticker in tickers:
         df = compute_indicators(df)
         latest = df.iloc[-1]
 
-        # Signals
         rsi_signal = "✅" if (latest['RSI'] < 35) else "❌"
         macd_signal = "✅" if (latest['MACD'] > latest['Signal']) else "❌"
         vwap_signal = "✅" if (latest['Close'] > latest['VWAP']) else "❌"
