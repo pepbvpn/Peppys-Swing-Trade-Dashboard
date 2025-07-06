@@ -14,7 +14,7 @@ intervals = ["15m", "1h"]
 # --- Function to Compute Indicators ---
 def compute_indicators(data):
     # --- RSI ---
-    delta = data['Close'].diff().squeeze()
+    delta = data['Close'].diff()
     gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
     loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
     avg_gain = gain.rolling(window=14).mean()
@@ -51,6 +51,10 @@ results = []
 for interval in intervals:
     period = "2d" if interval == "15m" else "7d"
     df = yf.download(ticker, interval=interval, period=period, progress=False)
+
+    # 🔧 Flatten MultiIndex Columns if Present
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
     if df.empty:
         continue
