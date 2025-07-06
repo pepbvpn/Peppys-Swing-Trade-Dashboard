@@ -15,10 +15,10 @@ intervals = ["15m", "1h"]
 def compute_indicators(data):
     # RSI
     delta = data['Close'].diff()
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = pd.Series(gain).rolling(window=14).mean()
-    avg_loss = pd.Series(loss).rolling(window=14).mean()
+    gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
+    loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     data['RSI'] = rsi
