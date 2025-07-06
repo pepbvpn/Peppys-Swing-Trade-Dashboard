@@ -1,1 +1,102 @@
-# Final trading app with profit target and stop loss logic implemented
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import streamlit as st
+
+st.set_page_config(page_title="Entry Signal Dashboard", layout="wide")
+st.title("📈 Intraday Entry Signal Dashboard")
+
+# --- User Inputs ---
+ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
+option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
+intervals = ["15m", "1h"]
+
+# --- Function to Compute Indicators ---
+def compute_indicators(data):
+    # RSI
+    delta = data['Close'].diff()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = pd.Series(gain).rolling(window=14).mean()
+    avg_loss = pd.Series(loss).rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    data['RSI'] = rsi
+
+    # MACD
+    ema12 = data['Close'].ewm(span=12, adjust=False).mean()
+    ema26 = data['Close'].ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    data['MACD'] = macd
+    data['Signal'] = signal
+
+    # VWAP
+    data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
+    data['VP'] = data['TP'] * data['Volume']
+    data['Cumulative_VP'] = data['VP'].cumsum()
+    data['Cumulative_Volume'] = data['Volume'].cumsum()
+    data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
+
+    # SMA
+    data['SMA_50'] = data['Close'].rolling(window=50).mean()
+    data['SMA_200'] = data['Close'].rolling(window=200).mean()
+
+    return data
+
+# --- Get and Display Data ---
+results = []
+
+for interval in intervals:
+    period = "2d" if interval == "15m" else "7d"
+    df = yf.download(ticker, interval=interval, period=period, progress=False)
+    if df.empty:
+        continue
+
+    df = compute_indicators(df)
+    latest = df.iloc[-1]
+
+    # Entry logic
+    signals = {
+        "RSI Signal": "✅" if (
+            option_type == "CALL" and latest['RSI'] < 35
+        ) or (
+            option_type == "PUT" and latest['RSI'] > 70
+        ) else "❌",
+        "MACD Signal": "✅" if (
+            option_type == "CALL" and latest['MACD'] > latest['Signal']
+        ) or (
+            option_type == "PUT" and latest['MACD'] < latest['Signal']
+        ) else "❌",
+        "VWAP Signal": "✅" if (
+            option_type == "CALL" and latest['Close'] > latest['VWAP']
+        ) or (
+            option_type == "PUT" and latest['Close'] < latest['VWAP']
+        ) else "❌",
+        "SMA Trend": "✅" if (
+            option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']
+        ) or (
+            option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200']
+        ) else "❌"
+    }
+
+    score = list(signals.values()).count("✅")
+
+    results.append({
+        "Interval": interval,
+        "Close": round(latest['Close'], 2),
+        "RSI": round(latest['RSI'], 2),
+        "MACD": round(latest['MACD'], 3),
+        "Signal": round(latest['Signal'], 3),
+        "VWAP": round(latest['VWAP'], 2),
+        "SMA_50": round(latest['SMA_50'], 2),
+        "SMA_200": round(latest['SMA_200'], 2),
+        **signals,
+        "Trade Readiness Score": f"{score}/4"
+    })
+
+# --- Display Results ---
+if results:
+    st.dataframe(pd.DataFrame(results).set_index("Interval"))
+else:
+    st.warning("No data found. Try a different ticker.")
