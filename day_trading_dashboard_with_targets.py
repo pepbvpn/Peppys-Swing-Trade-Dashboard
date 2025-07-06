@@ -4,7 +4,7 @@ import numpy as np
 import streamlit as st
 
 st.set_page_config(page_title="Day Trade Signal App", layout="wide")
-st.title("📊 Day Trading Signal Scanner")
+st.title("📊 Peppy's Day Trading Signal Scanner")
 
 # Input tickers
 tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,SPY").upper().split(",")
