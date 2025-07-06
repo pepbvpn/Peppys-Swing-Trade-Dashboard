@@ -66,14 +66,16 @@ for ticker in tickers:
         status = "🔥 Strong Buy" if score == 4 else ("⚠️ Watchlist" if score >= 3 else "❌ Skip")
 
         results.append({
-            "Ticker": ticker.strip(),
-            "Interval": interval,
-            "Close": round(latest['Close'], 2),
-            "RSI": round(latest['RSI'], 2),
-            "MACD": round(latest['MACD'], 3),
-            "Signal": round(latest['Signal'], 3),
-            "VWAP": round(latest['VWAP'], 2),
-            "SMA_50": round(latest['SMA_50'], 2),
-            "SMA_200": round(latest['SMA_200'], 2),
-            "Score": f"{score}/4",
-            "Trade Signal": status
+    "Ticker": ticker.strip(),
+    "Interval": interval,
+    "Close": round(latest['Close'], 2),
+    "RSI": round(latest['RSI'], 2),
+    "MACD": round(latest['MACD'], 3),
+    "Signal": round(latest['Signal'], 3),
+    "VWAP": round(latest['VWAP'], 2),
+    "SMA_50": round(latest['SMA_50'], 2),
+    "SMA_200": round(latest['SMA_200'], 2),
+    "Score": f"{score}/4",
+    "Trade Signal": status
+})  # ← ✅ this closes the append
+
