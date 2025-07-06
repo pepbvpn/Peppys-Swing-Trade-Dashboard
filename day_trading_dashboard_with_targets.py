@@ -13,9 +13,6 @@ st_autorefresh(interval=120000, limit=None, key="refresh")
 
 # --- User Inputs ---
 ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
-option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
-intervals = ["15m", "1h", "1d"]
-
 # --- Show Current Price ---
 if ticker:
     try:
@@ -25,6 +22,8 @@ if ticker:
             st.subheader(f"📌 Current Market Price of {ticker.upper()}: ${round(current_price, 2)}")
     except:
         st.warning("Could not fetch current price. Try another ticker.")
+option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
+intervals = ["15m", "1h", "1d"]
 
 # --- Function to Compute Indicators ---
 def compute_indicators(data):
