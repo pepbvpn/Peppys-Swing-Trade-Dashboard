@@ -7,65 +7,69 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Day Trade Signal App", layout="wide")
 st.title("📊 Peppy's Day Trading Signal Scanner")
 
-# ⏱️ Refresh every 2 minutes
-st_autorefresh(interval=120000, limit=None, key="datarefresh")
+# 🔁 Auto-refresh every 2 minutes
+st_autorefresh(interval=120000, limit=None, key="refresh")
 
-# Input tickers
-tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,SPY").upper().split(",")
-tickers = [t.strip() for t in tickers if t.strip()]
-intervals = {"15m": "10d", "1h": "30d"}
+# --- Ticker Input ---
+tickers = st.text_input("Enter comma-separated tickers", value="AAPL,TSLA,SPY,NVDA,AMD").upper().split(",")
 
-# Indicator logic
-def compute_indicators(df):
-    delta = df['Close'].diff()
-    gain = pd.Series(np.where(delta > 0, delta, 0), index=df.index)
-    loss = pd.Series(np.where(delta < 0, -delta, 0), index=df.index)
+# --- Interval to Period Mapping ---
+intervals = {
+    "15m": "10d",
+    "1h": "30d"
+}
+
+# --- Indicator Function ---
+def compute_indicators(data):
+    delta = data['Close'].diff().squeeze()
+    gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
+    loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
     avg_gain = gain.rolling(window=14).mean()
     avg_loss = loss.rolling(window=14).mean()
     rs = avg_gain / avg_loss
-    df['RSI'] = 100 - (100 / (1 + rs))
+    data['RSI'] = 100 - (100 / (1 + rs))
 
-    ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-    ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema12 - ema26
-    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    ema12 = data['Close'].ewm(span=12, adjust=False).mean()
+    ema26 = data['Close'].ewm(span=26, adjust=False).mean()
+    data['MACD'] = ema12 - ema26
+    data['Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
 
-    df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
-    df['VP'] = df['TP'] * df['Volume']
-    df['Cumulative_VP'] = df['VP'].cumsum()
-    df['Cumulative_Volume'] = df['Volume'].cumsum()
-    df['VWAP'] = df['Cumulative_VP'] / df['Cumulative_Volume']
+    data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
+    data['VP'] = data['TP'] * data['Volume']
+    data['Cumulative_VP'] = data['VP'].cumsum()
+    data['Cumulative_Volume'] = data['Volume'].cumsum()
+    data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    df['SMA_200'] = df['Close'].rolling(window=200).mean()
-    return df
+    data['SMA_50'] = data['Close'].rolling(window=50).mean()
+    data['SMA_200'] = data['Close'].rolling(window=200).mean()
+    
+    return data
 
-# Scan tickers
+# --- Main Logic ---
 results = []
 
 for ticker in tickers:
+    ticker_rows = []
     combined_scores = {}
+
     for interval, period in intervals.items():
-        df = yf.download(ticker, interval=interval, period=period, progress=False, auto_adjust=False)
+        df = yf.download(ticker, interval=interval, period=period, progress=False)
         if df.empty:
             continue
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+
         df = compute_indicators(df)
         latest = df.iloc[-1]
 
-        # Signal logic
-        signals = {
-            "RSI": latest['RSI'] < 35 or latest['RSI'] > 70,
-            "MACD": (latest['MACD'] > latest['Signal']) or (latest['MACD'] < latest['Signal']),
-            "VWAP": (latest['Close'] > latest['VWAP']) or (latest['Close'] < latest['VWAP']),
-            "SMA": (latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or 
-                   (latest['Close'] < latest['SMA_50'] < latest['SMA_200']),
-        }
-        score = sum(signals.values())
+        # Signals
+        rsi_signal = "✅" if (latest['RSI'] < 35) else "❌"
+        macd_signal = "✅" if (latest['MACD'] > latest['Signal']) else "❌"
+        vwap_signal = "✅" if (latest['Close'] > latest['VWAP']) else "❌"
+        sma_trend = "✅" if latest['Close'] > latest['SMA_50'] > latest['SMA_200'] else "❌"
+
+        score = [rsi_signal, macd_signal, vwap_signal, sma_trend].count("✅")
         combined_scores[interval] = score
 
-        results.append({
+        ticker_rows.append({
             "Ticker": ticker,
             "Interval": interval,
             "Close": round(latest['Close'], 2),
@@ -75,41 +79,52 @@ for ticker in tickers:
             "VWAP": round(latest['VWAP'], 2),
             "SMA_50": round(latest['SMA_50'], 2),
             "SMA_200": round(latest['SMA_200'], 2),
-            "Score": f"{score}/4"
+            "RSI Signal": rsi_signal,
+            "MACD Signal": macd_signal,
+            "VWAP Signal": vwap_signal,
+            "SMA Trend": sma_trend,
+            "Trade Readiness Score": f"{score}/4"
         })
 
-    # Combined signal row
-score15 = combined_scores.get("15m", 0)
-score1h = combined_scores.get("1h", 0)
+    # Final signal
+    if combined_scores:
+        score15 = combined_scores.get("15m", 0)
+        score1h = combined_scores.get("1h", 0)
 
-if score15 == 4 and score1h == 4:
-    signal = "🚨 PERFECT SETUP (4/4 x 2)"
-elif score15 >= 3 and score1h >= 3:
-    signal = "🔥 Strong Buy"
-elif score1h >= 3 and score15 < 3:
-    signal = "⏳ Wait for 15m"
-elif score15 >= 3 and score1h < 3:
-    signal = "⚠️ Only short-term setup"
-else:
-    signal = "❌ Skip"
+        if score15 == 4 and score1h == 4:
+            final_signal = "🚨 PERFECT SETUP (4/4 x 2)"
+        elif score15 >= 3 and score1h >= 3:
+            final_signal = "🔥 Strong Buy"
+        elif score1h >= 3 and score15 < 3:
+            final_signal = "⏳ Wait for 15m"
+        elif score15 >= 3 and score1h < 3:
+            final_signal = "⚠️ Short-term Setup Only"
+        else:
+            final_signal = "❌ Skip"
 
-    results.append({
-        "Ticker": ticker,
-        "Interval": "Summary",
-        "Close": "",
-        "RSI": "",
-        "MACD": "",
-        "Signal": "",
-        "VWAP": "",
-        "SMA_50": "",
-        "SMA_200": "",
-        "Score": f"{score15}/4 + {score1h}/4",
-        "Trade Signal": signal
-    })
+        ticker_rows.append({
+            "Ticker": ticker,
+            "Interval": "Summary",
+            "Close": "-",
+            "RSI": "-",
+            "MACD": "-",
+            "Signal": "-",
+            "VWAP": "-",
+            "SMA_50": "-",
+            "SMA_200": "-",
+            "RSI Signal": "-",
+            "MACD Signal": "-",
+            "VWAP Signal": "-",
+            "SMA Trend": "-",
+            "Trade Readiness Score": f"{score15}/4 + {score1h}/4",
+            "Final Signal": final_signal
+        })
 
-# Display
+    results.extend(ticker_rows)
+
+# --- Display Table ---
 df = pd.DataFrame(results)
 if not df.empty:
-    st.dataframe(df)
+    st.dataframe(df.set_index(["Ticker", "Interval"]))
 else:
-    st.error("No data was retrieved. Try again or check tickers.")
+    st.warning("No valid trade setups yet. Try again shortly.")
