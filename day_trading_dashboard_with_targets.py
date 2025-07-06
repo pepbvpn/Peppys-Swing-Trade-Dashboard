@@ -82,7 +82,9 @@ for ticker in tickers:
     # Combined signal row
     score15 = combined_scores.get("15m", 0)
     score1h = combined_scores.get("1h", 0)
-    if score15 >= 3 and score1h >= 3:
+    if score15 == 4 and score1h == 4:
+        signal = "🚨 PERFECT SETUP (4/4 x 2)"    
+    elif score15 >= 3 and score1h >= 3:
         signal = "🔥 Strong Buy"
     elif score1h >= 3 and score15 < 3:
         signal = "⏳ Wait for 15m"
