@@ -13,8 +13,8 @@ intervals = ["15m", "1h"]
 
 # --- Function to Compute Indicators ---
 def compute_indicators(data):
-    # RSI
-    delta = data['Close'].diff()
+    # --- RSI ---
+    delta = data['Close'].diff().squeeze()
     gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
     loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
     avg_gain = gain.rolling(window=14).mean()
@@ -23,7 +23,7 @@ def compute_indicators(data):
     rsi = 100 - (100 / (1 + rs))
     data['RSI'] = rsi
 
-    # MACD
+    # --- MACD ---
     ema12 = data['Close'].ewm(span=12, adjust=False).mean()
     ema26 = data['Close'].ewm(span=26, adjust=False).mean()
     macd = ema12 - ema26
@@ -31,14 +31,14 @@ def compute_indicators(data):
     data['MACD'] = macd
     data['Signal'] = signal
 
-    # VWAP
+    # --- VWAP ---
     data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
     data['VP'] = data['TP'] * data['Volume']
     data['Cumulative_VP'] = data['VP'].cumsum()
     data['Cumulative_Volume'] = data['Volume'].cumsum()
     data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
-    # SMA
+    # --- SMA ---
     data['SMA_50'] = data['Close'].rolling(window=50).mean()
     data['SMA_200'] = data['Close'].rolling(window=200).mean()
 
@@ -56,7 +56,7 @@ for interval in intervals:
     df = compute_indicators(df)
     latest = df.iloc[-1]
 
-    # Entry logic
+    # Entry signal logic
     signals = {
         "RSI Signal": "✅" if (
             option_type == "CALL" and latest['RSI'] < 35
