@@ -1,114 +1,113 @@
-
+import yfinance as yf
 import pandas as pd
 import numpy as np
-import ta
-import time
-import requests
 import streamlit as st
-from math import ceil
 
-# ========= CONFIG ========= #
-API_KEY = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
+st.set_page_config(page_title="Entry Signal Dashboard", layout="wide")
+st.title("📈 Intraday Entry Signal Dashboard")
 
-# ========= UI ========= #
-st.set_page_config(page_title="Day Trading Scout", layout="wide")
-st.title("📈 Smart Day Trading Scout – S&P 500 Scanner")
+# --- User Inputs ---
+ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
+option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
+intervals = ["15m", "1h"]
 
-st.sidebar.header("Settings")
-interval = st.sidebar.selectbox("Time Interval", ["5", "15", "30"], index=1)
-lookback_candles = st.sidebar.slider("Candles to Analyze", 50, 300, 100)
+# --- Function to Compute Indicators ---
+def compute_indicators(data):
+    # --- RSI ---
+    delta = data['Close'].diff()
+    gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
+    loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    data['RSI'] = rsi
 
-# ========= LOAD S&P 500 ========= #
-@st.cache_data
-def load_sp500():
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    df = pd.read_html(url)[0]
-    return df["Symbol"].tolist()
+    # --- MACD ---
+    ema12 = data['Close'].ewm(span=12, adjust=False).mean()
+    ema26 = data['Close'].ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    data['MACD'] = macd
+    data['Signal'] = signal
 
-tickers = load_sp500()
+    # --- VWAP ---
+    data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
+    volume = data['Volume'] if isinstance(data['Volume'], pd.Series) else data['Volume'].iloc[:, 0]
+    data['VP'] = data['TP'] * volume
+    data['Cumulative_VP'] = data['VP'].cumsum()
+    data['Cumulative_Volume'] = volume.cumsum()
+    data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
-# ========= BATCHING ========= #
-batch_size = 50
-num_batches = ceil(len(tickers) / batch_size)
-selected_batch = st.sidebar.selectbox(
-    "Select Batch (Each ~50 tickers)",
-    options=[f"Batch {i+1}" for i in range(num_batches)]
-)
-batch_index = int(selected_batch.split(" ")[1]) - 1
-current_batch = tickers[batch_index * batch_size : (batch_index + 1) * batch_size]
+    # --- SMA ---
+    data['SMA_50'] = data['Close'].rolling(window=50).mean()
+    data['SMA_200'] = data['Close'].rolling(window=200).mean()
 
-scan_button = st.sidebar.button("🔍 Start Scan")
+    return data
 
-# ========= FETCH FROM FINNHUB ========= #
-def fetch_ohlcv(symbol, resolution, count):
-    now = int(time.time())
-    past = now - (count * 60 * int(resolution))
-    url = f"https://finnhub.io/api/v1/stock/candle?symbol={symbol}&resolution={resolution}&from={past}&to={now}&token={API_KEY}"
-    res = requests.get(url).json()
-    if res.get("s") != "ok":
-        return pd.DataFrame()
-    df = pd.DataFrame({
-        't': pd.to_datetime(res['t'], unit='s'),
-        'o': res['o'],
-        'h': res['h'],
-        'l': res['l'],
-        'c': res['c'],
-        'v': res['v']
-    })
-    df.set_index('t', inplace=True)
-    return df
-
-# ========= ANALYSIS ========= #
-def analyze_stock(df):
-    if df.empty or len(df) < 30:
-        return None
-    df['rsi'] = ta.momentum.RSIIndicator(df['c']).rsi()
-    df['macd'] = ta.trend.MACD(df['c']).macd_diff()
-    df['vwap'] = (df['v'] * (df['h'] + df['l'] + df['c']) / 3).cumsum() / df['v'].cumsum()
-    df['vol_spike'] = df['v'] > df['v'].rolling(20).mean() * 1.5
-
-    last = df.iloc[-1]
-    signals = {
-        "RSI < 35": last['rsi'] < 35,
-        "MACD > 0": last['macd'] > 0,
-        "Price > VWAP": last['c'] > last['vwap'],
-        "Volume Spike": last['vol_spike']
-    }
-
-    score = sum(signals.values())
-
-    if score == 4:
-        label = "🔥 High Conviction Buy"
-    elif score == 3:
-        label = "⚠️ Watch List"
-    else:
-        label = "❌ Skip for Now"
-
-    return {
-        "Ticker": df.name,
-        "Price": round(last['c'], 2),
-        "Score": score,
-        "Status": label,
-        **signals
-    }
-
-# ========= SCAN ========= #
+# --- Get and Display Data ---
 results = []
-if scan_button:
-    with st.spinner("Scanning tickers..."):
-        for i, symbol in enumerate(current_batch):
-            st.sidebar.write(f"{i+1}/{len(current_batch)} scanning: {symbol}")
-            df = fetch_ohlcv(symbol, interval, lookback_candles)
-            df.name = symbol
-            data = analyze_stock(df)
-            if data:
-                results.append(data)
-            time.sleep(1)  # Respect Finnhub rate limits
 
-    if results:
-        result_df = pd.DataFrame(results)
-        result_df.sort_values(by=["Score", "Ticker"], ascending=[False, True], inplace=True)
-        st.success(f"Scan complete! Showing results for {selected_batch}")
-        st.dataframe(result_df, use_container_width=True)
-    else:
-        st.warning("No valid signals found.")
+for interval in intervals:
+    # ✅ Updated optimal periods
+    if interval == "15m":
+        period = "5d"   # Great for SMA200 at 15m resolution
+    elif interval == "1h":
+        period = "30d"  # Enough for SMA200 at 1h resolution
+
+    df = yf.download(ticker, interval=interval, period=period, progress=False)
+
+    # 🔧 Flatten MultiIndex Columns if Present
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    if df.empty:
+        continue
+
+    df = compute_indicators(df)
+    latest = df.iloc[-1]
+
+    # --- Entry Signal Logic ---
+    signals = {
+        "RSI Signal": "✅" if (
+            option_type == "CALL" and latest['RSI'] < 35
+        ) or (
+            option_type == "PUT" and latest['RSI'] > 70
+        ) else "❌",
+        "MACD Signal": "✅" if (
+            option_type == "CALL" and latest['MACD'] > latest['Signal']
+        ) or (
+            option_type == "PUT" and latest['MACD'] < latest['Signal']
+        ) else "❌",
+        "VWAP Signal": "✅" if (
+            option_type == "CALL" and latest['Close'] > latest['VWAP']
+        ) or (
+            option_type == "PUT" and latest['Close'] < latest['VWAP']
+        ) else "❌",
+        "SMA Trend": "✅" if (
+            option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']
+        ) or (
+            option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200']
+        ) else "❌"
+    }
+
+    score = list(signals.values()).count("✅")
+
+    results.append({
+        "Interval": interval,
+        "Close": round(latest['Close'], 2),
+        "RSI": round(latest['RSI'], 2),
+        "MACD": round(latest['MACD'], 3),
+        "Signal": round(latest['Signal'], 3),
+        "VWAP": round(latest['VWAP'], 2),
+        "SMA_50": round(latest['SMA_50'], 2),
+        "SMA_200": round(latest['SMA_200'], 2),
+        **signals,
+        "Trade Readiness Score": f"{score}/4"
+    })
+
+# --- Display Results ---
+if results:
+    st.dataframe(pd.DataFrame(results).set_index("Interval"))
+else:
+    st.warning("No data found. Try a different ticker or wait for more candles to build.")
