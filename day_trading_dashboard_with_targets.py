@@ -117,8 +117,8 @@ near_support = "Yes" if not np.isnan(support) and (price <= support * 1.02) else
         "Support": support,
         "Resistance": resistance,
         **signals,
-        "Trade Readiness Score": f"{score}/4"
         "Near Support": near_support,
+        "Trade Readiness Score": f"{score}/4"
     })
 
 # --- Display ---
