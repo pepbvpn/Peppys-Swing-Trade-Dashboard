@@ -9,7 +9,7 @@ st.title("📊 Day Trading Signal Scanner")
 # Input tickers
 tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,SPY").upper().split(",")
 tickers = [t.strip() for t in tickers if t.strip()]
-intervals = {"15m": "5d", "1h": "30d"}
+intervals = {"15m": "10d", "1h": "30d"}
 
 # Indicator logic
 def compute_indicators(df):
