@@ -33,9 +33,10 @@ def compute_indicators(data):
 
     # --- VWAP ---
     data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
-    data['VP'] = data['TP'] * data['Volume']
+    volume = data['Volume'] if isinstance(data['Volume'], pd.Series) else data['Volume'].iloc[:, 0]
+    data['VP'] = data['TP'] * volume
     data['Cumulative_VP'] = data['VP'].cumsum()
-    data['Cumulative_Volume'] = data['Volume'].cumsum()
+    data['Cumulative_Volume'] = volume.cumsum()
     data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
     # --- SMA ---
@@ -50,13 +51,14 @@ results = []
 for interval in intervals:
     period = "2d" if interval == "15m" else "7d"
     df = yf.download(ticker, interval=interval, period=period, progress=False)
+
     if df.empty:
         continue
 
     df = compute_indicators(df)
     latest = df.iloc[-1]
 
-    # Entry signal logic
+    # --- Entry Signal Logic ---
     signals = {
         "RSI Signal": "✅" if (
             option_type == "CALL" and latest['RSI'] < 35
@@ -99,4 +101,4 @@ for interval in intervals:
 if results:
     st.dataframe(pd.DataFrame(results).set_index("Interval"))
 else:
-    st.warning("No data found. Try a different ticker.")
+    st.warning("No data found. Try a different ticker or wait for more candles to build.")
