@@ -3,16 +3,16 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
-st.set_page_config(page_title="Day Trading Scanner", layout="wide")
-st.title("📈 Trade-Ready Stock Scanner (15m & 1h)")
+st.set_page_config(page_title="Day Trading Signal Scanner", layout="wide")
+st.title("📈 Day Trading Scanner (15m + 1h) with Combined Trade Signal")
 
-# User-defined tickers
-tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,MSFT,AMD,SPY").upper().split(",")
+# --- Ticker Input ---
+tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,SPY,AMD,META").upper().split(",")
+tickers = [t.strip() for t in tickers if t.strip()]
 
-# Interval settings
 intervals = {"15m": "10d", "1h": "30d"}
 
-# Compute indicators
+# --- Indicator Function ---
 def compute_indicators(data):
     delta = data['Close'].diff()
     gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
@@ -42,15 +42,18 @@ def compute_indicators(data):
 
     return data
 
-# Scan all tickers
-results = []
+# --- Scan Logic ---
+raw_results = []
+
 for ticker in tickers:
+    interval_scores = {}
     for interval, period in intervals.items():
-        df = yf.download(ticker.strip(), interval=interval, period=period, progress=False)
+        df = yf.download(ticker, interval=interval, period=period, progress=False)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         if df.empty:
             continue
+
         df = compute_indicators(df)
         latest = df.iloc[-1]
 
@@ -63,19 +66,51 @@ for ticker in tickers:
         }
 
         score = sum(signals.values())
-        status = "🔥 Strong Buy" if score == 4 else ("⚠️ Watchlist" if score >= 3 else "❌ Skip")
+        interval_scores[interval] = score
 
-        results.append({
-    "Ticker": ticker.strip(),
-    "Interval": interval,
-    "Close": round(latest['Close'], 2),
-    "RSI": round(latest['RSI'], 2),
-    "MACD": round(latest['MACD'], 3),
-    "Signal": round(latest['Signal'], 3),
-    "VWAP": round(latest['VWAP'], 2),
-    "SMA_50": round(latest['SMA_50'], 2),
-    "SMA_200": round(latest['SMA_200'], 2),
-    "Score": f"{score}/4",
-    "Trade Signal": status
-})  # ← ✅ this closes the append
+        raw_results.append({
+            "Ticker": ticker,
+            "Interval": interval,
+            "Close": round(latest['Close'], 2),
+            "RSI": round(latest['RSI'], 2),
+            "MACD": round(latest['MACD'], 3),
+            "Signal": round(latest['Signal'], 3),
+            "VWAP": round(latest['VWAP'], 2),
+            "SMA_50": round(latest['SMA_50'], 2),
+            "SMA_200": round(latest['SMA_200'], 2),
+            "Score": f"{score}/4"
+        })
 
+    # --- Combined Signal ---
+    score_15m = interval_scores.get("15m", 0)
+    score_1h = interval_scores.get("1h", 0)
+
+    if score_15m >= 3 and score_1h >= 3:
+        signal = "🔥 Strong Buy (Both 15m & 1h)"
+    elif score_1h >= 3 and score_15m < 3:
+        signal = "⏳ Wait for 15m Setup"
+    elif score_15m >= 3 and score_1h < 3:
+        signal = "⚠️ Short-Term Move Only"
+    else:
+        signal = "❌ Skip"
+
+    raw_results.append({
+        "Ticker": ticker,
+        "Interval": "Summary",
+        "Close": "",
+        "RSI": "",
+        "MACD": "",
+        "Signal": "",
+        "VWAP": "",
+        "SMA_50": "",
+        "SMA_200": "",
+        "Score": f"{score_15m}/4 + {score_1h}/4",
+        "Trade Signal": signal
+    })
+
+# --- Display Results ---
+df = pd.DataFrame(raw_results)
+if not df.empty:
+    st.dataframe(df)
+else:
+    st.warning("No data returned. Try valid tickers or check your internet.")
