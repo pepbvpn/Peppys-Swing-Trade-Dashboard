@@ -51,9 +51,9 @@ results = []
 for interval in intervals:
     # ✅ Updated optimal periods
     if interval == "15m":
-        period = "5d"   # Great for SMA200 at 15m resolution
+        period = "10d"   # Now has enough candles for SMA 200
     elif interval == "1h":
-        period = "30d"  # Enough for SMA200 at 1h resolution
+        period = "30d"   # Already sufficient for SMA 200
 
     df = yf.download(ticker, interval=interval, period=period, progress=False)
 
