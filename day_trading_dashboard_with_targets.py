@@ -88,6 +88,8 @@ for interval in intervals:
 
     # Support/Resistance
     support, resistance = get_support_resistance(df)
+    price = latest['Close']
+near_support = "Yes" if not np.isnan(support) and (price <= support * 1.02) else "No"
 
     # Signal Logic
     signals = {
@@ -116,6 +118,7 @@ for interval in intervals:
         "Resistance": resistance,
         **signals,
         "Trade Readiness Score": f"{score}/4"
+        "Near Support": near_support,
     })
 
 # --- Display ---
