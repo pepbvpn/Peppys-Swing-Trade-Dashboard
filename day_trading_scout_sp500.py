@@ -2,9 +2,13 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Entry Signal Dashboard", layout="wide")
 st.title("📈 Intraday Entry Signal Dashboard")
+
+# 🔁 Auto-refresh every 2 minutes
+st_autorefresh(interval=120000, limit=None, key="refresh")
 
 # --- User Inputs ---
 ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
