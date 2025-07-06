@@ -16,6 +16,16 @@ ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
 intervals = ["15m", "1h", "1d"]
 
+# --- Show Current Price ---
+if ticker:
+    try:
+        info = yf.Ticker(ticker).info
+        current_price = info.get("regularMarketPrice")
+        if current_price:
+            st.subheader(f"📌 Current Market Price of {ticker.upper()}: ${round(current_price, 2)}")
+    except:
+        st.warning("Could not fetch current price. Try another ticker.")
+
 # --- Function to Compute Indicators ---
 def compute_indicators(data):
     # RSI
