@@ -2,9 +2,13 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Day Trade Signal App", layout="wide")
 st.title("📊 Peppy's Day Trading Signal Scanner")
+
+# ⏱️ Refresh every 2 minutes
+st_autorefresh(interval=120000, limit=None, key="datarefresh")
 
 # Input tickers
 tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,SPY").upper().split(",")
