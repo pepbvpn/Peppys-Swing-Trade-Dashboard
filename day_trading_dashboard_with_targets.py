@@ -63,10 +63,11 @@ for ticker in tickers:
         df = compute_indicators(df)
         latest = df.iloc[-1]
 
-        rsi_signal = "✅" if (latest['RSI'] < 35) else "❌"
-        macd_signal = "✅" if (latest['MACD'] > latest['Signal']) else "❌"
-        vwap_signal = "✅" if (latest['Close'] > latest['VWAP']) else "❌"
-        sma_trend = "✅" if latest['Close'] > latest['SMA_50'] > latest['SMA_200'] else "❌"
+        # ✅ Safe checks with NaN handling
+        rsi_signal = "✅" if pd.notna(latest['RSI']) and latest['RSI'] < 35 else "❌"
+        macd_signal = "✅" if pd.notna(latest['MACD']) and pd.notna(latest['Signal']) and latest['MACD'] > latest['Signal'] else "❌"
+        vwap_signal = "✅" if pd.notna(latest['VWAP']) and latest['Close'] > latest['VWAP'] else "❌"
+        sma_trend = "✅" if pd.notna(latest['SMA_50']) and pd.notna(latest['SMA_200']) and latest['Close'] > latest['SMA_50'] > latest['SMA_200'] else "❌"
 
         score = [rsi_signal, macd_signal, vwap_signal, sma_trend].count("✅")
         combined_scores[interval] = score
@@ -75,12 +76,12 @@ for ticker in tickers:
             "Ticker": ticker,
             "Interval": interval,
             "Close": round(latest['Close'], 2),
-            "RSI": round(latest['RSI'], 2),
-            "MACD": round(latest['MACD'], 3),
-            "Signal": round(latest['Signal'], 3),
-            "VWAP": round(latest['VWAP'], 2),
-            "SMA_50": round(latest['SMA_50'], 2),
-            "SMA_200": round(latest['SMA_200'], 2),
+            "RSI": round(latest['RSI'], 2) if pd.notna(latest['RSI']) else "-",
+            "MACD": round(latest['MACD'], 3) if pd.notna(latest['MACD']) else "-",
+            "Signal": round(latest['Signal'], 3) if pd.notna(latest['Signal']) else "-",
+            "VWAP": round(latest['VWAP'], 2) if pd.notna(latest['VWAP']) else "-",
+            "SMA_50": round(latest['SMA_50'], 2) if pd.notna(latest['SMA_50']) else "-",
+            "SMA_200": round(latest['SMA_200'], 2) if pd.notna(latest['SMA_200']) else "-",
             "RSI Signal": rsi_signal,
             "MACD Signal": macd_signal,
             "VWAP Signal": vwap_signal,
@@ -88,7 +89,7 @@ for ticker in tickers:
             "Trade Readiness Score": f"{score}/4"
         })
 
-    # Final signal
+    # Final signal summary
     if combined_scores:
         score15 = combined_scores.get("15m", 0)
         score1h = combined_scores.get("1h", 0)
