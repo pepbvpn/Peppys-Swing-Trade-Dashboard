@@ -3,17 +3,17 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
-st.set_page_config(page_title="Entry Signal Dashboard", layout="wide")
-st.title("📈 Intraday Entry Signal Dashboard")
+st.set_page_config(page_title="Day Trading Scanner", layout="wide")
+st.title("📈 Trade-Ready Stock Scanner (15m & 1h)")
 
-# --- User Inputs ---
-ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
-option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
-intervals = ["15m", "1h"]
+# User-defined tickers
+tickers = st.text_input("Enter comma-separated tickers", "AAPL,TSLA,NVDA,MSFT,AMD,SPY").upper().split(",")
 
-# --- Function to Compute Indicators ---
+# Interval settings
+intervals = {"15m": "10d", "1h": "30d"}
+
+# Compute indicators
 def compute_indicators(data):
-    # --- RSI ---
     delta = data['Close'].diff()
     gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
     loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
@@ -23,7 +23,6 @@ def compute_indicators(data):
     rsi = 100 - (100 / (1 + rs))
     data['RSI'] = rsi
 
-    # --- MACD ---
     ema12 = data['Close'].ewm(span=12, adjust=False).mean()
     ema26 = data['Close'].ewm(span=26, adjust=False).mean()
     macd = ema12 - ema26
@@ -31,7 +30,6 @@ def compute_indicators(data):
     data['MACD'] = macd
     data['Signal'] = signal
 
-    # --- VWAP ---
     data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
     volume = data['Volume'] if isinstance(data['Volume'], pd.Series) else data['Volume'].iloc[:, 0]
     data['VP'] = data['TP'] * volume
@@ -39,70 +37,43 @@ def compute_indicators(data):
     data['Cumulative_Volume'] = volume.cumsum()
     data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
-    # --- SMA ---
     data['SMA_50'] = data['Close'].rolling(window=50).mean()
     data['SMA_200'] = data['Close'].rolling(window=200).mean()
 
     return data
 
-# --- Get and Display Data ---
+# Scan all tickers
 results = []
+for ticker in tickers:
+    for interval, period in intervals.items():
+        df = yf.download(ticker.strip(), interval=interval, period=period, progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        if df.empty:
+            continue
+        df = compute_indicators(df)
+        latest = df.iloc[-1]
 
-for interval in intervals:
-    period = "2d" if interval == "15m" else "7d"
-    df = yf.download(ticker, interval=interval, period=period, progress=False)
+        signals = {
+            "RSI": latest['RSI'] < 35 or latest['RSI'] > 70,
+            "MACD": (latest['MACD'] > latest['Signal']) or (latest['MACD'] < latest['Signal']),
+            "VWAP": (latest['Close'] > latest['VWAP']) or (latest['Close'] < latest['VWAP']),
+            "SMA": (latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or 
+                   (latest['Close'] < latest['SMA_50'] < latest['SMA_200']),
+        }
 
-    # 🔧 Flatten MultiIndex Columns if Present
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+        score = sum(signals.values())
+        status = "🔥 Strong Buy" if score == 4 else ("⚠️ Watchlist" if score >= 3 else "❌ Skip")
 
-    if df.empty:
-        continue
-
-    df = compute_indicators(df)
-    latest = df.iloc[-1]
-
-    # --- Entry Signal Logic ---
-    signals = {
-        "RSI Signal": "✅" if (
-            option_type == "CALL" and latest['RSI'] < 35
-        ) or (
-            option_type == "PUT" and latest['RSI'] > 70
-        ) else "❌",
-        "MACD Signal": "✅" if (
-            option_type == "CALL" and latest['MACD'] > latest['Signal']
-        ) or (
-            option_type == "PUT" and latest['MACD'] < latest['Signal']
-        ) else "❌",
-        "VWAP Signal": "✅" if (
-            option_type == "CALL" and latest['Close'] > latest['VWAP']
-        ) or (
-            option_type == "PUT" and latest['Close'] < latest['VWAP']
-        ) else "❌",
-        "SMA Trend": "✅" if (
-            option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']
-        ) or (
-            option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200']
-        ) else "❌"
-    }
-
-    score = list(signals.values()).count("✅")
-
-    results.append({
-        "Interval": interval,
-        "Close": round(latest['Close'], 2),
-        "RSI": round(latest['RSI'], 2),
-        "MACD": round(latest['MACD'], 3),
-        "Signal": round(latest['Signal'], 3),
-        "VWAP": round(latest['VWAP'], 2),
-        "SMA_50": round(latest['SMA_50'], 2),
-        "SMA_200": round(latest['SMA_200'], 2),
-        **signals,
-        "Trade Readiness Score": f"{score}/4"
-    })
-
-# --- Display Results ---
-if results:
-    st.dataframe(pd.DataFrame(results).set_index("Interval"))
-else:
-    st.warning("No data found. Try a different ticker or wait for more candles to build.")
+        results.append({
+            "Ticker": ticker.strip(),
+            "Interval": interval,
+            "Close": round(latest['Close'], 2),
+            "RSI": round(latest['RSI'], 2),
+            "MACD": round(latest['MACD'], 3),
+            "Signal": round(latest['Signal'], 3),
+            "VWAP": round(latest['VWAP'], 2),
+            "SMA_50": round(latest['SMA_50'], 2),
+            "SMA_200": round(latest['SMA_200'], 2),
+            "Score": f"{score}/4",
+            "Trade Signal": status
