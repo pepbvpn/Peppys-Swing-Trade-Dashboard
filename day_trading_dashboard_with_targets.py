@@ -95,8 +95,22 @@ try:
         st.dataframe(df_insider.sort_values("transactionDate", ascending=False).reset_index(drop=True))
     else:
         st.info("No insider trades found for selected range.")
-except:
-    st.warning("Failed to fetch insider trade data.")
+except Exception as e:
+    st.warning(f"Failed to fetch insider trade data. Error: {e}")
+
+# --- Earnings Calendar ---
+st.markdown("### 📅 Upcoming Earnings")
+earnings_url = f"https://finnhub.io/api/v1/calendar/earnings?symbol={ticker}&from={to_date}&to={to_date}&token={finnhub_api_key}"
+try:
+    response = requests.get(earnings_url)
+    earnings_data = response.json().get("earningsCalendar", [])
+    if earnings_data:
+        df_earnings = pd.DataFrame(earnings_data)
+        st.dataframe(df_earnings[["symbol", "date", "epsEstimate", "revenueEstimate"]])
+    else:
+        st.info("No earnings events found for today.")
+except Exception as e:
+    st.warning(f"Failed to fetch earnings data. Error: {e}")
 
 # --- Indicator Calculations ---
 def compute_indicators(data):
