@@ -9,3 +9,4 @@ lxml
 finnhub-python
 streamlit-autorefresh
 scipy
+requests
