@@ -27,7 +27,7 @@ if ticker:
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
 intervals = ["15m", "1h", "1d"]
 
-# --- Function to Compute Indicators ---
+# --- Indicator Calculations ---
 def compute_indicators(data):
     delta = data['Close'].diff()
     gain = np.where(delta > 0, delta, 0)
@@ -52,7 +52,7 @@ def compute_indicators(data):
     data['SMA_200'] = data['Close'].rolling(window=200).mean()
     return data
 
-# --- Function to Detect Support and Resistance ---
+# --- Support/Resistance Detection ---
 def get_support_resistance(data, order=10):
     close = data['Close']
     local_min = argrelextrema(close.values, np.less_equal, order=order)[0]
@@ -61,38 +61,36 @@ def get_support_resistance(data, order=10):
     resistance = close.iloc[local_max].tail(3).mean() if len(local_max) > 0 else np.nan
     return round(support, 2), round(resistance, 2)
 
-# --- Get and Display Data ---
+# --- Results Collection ---
 results = []
 
 for interval in intervals:
-    if interval == "15m":
-        period = "10d"
-    elif interval == "1h":
-        period = "30d"
-    elif interval == "1d":
-        period = "1y"
-
+    period = {"15m": "10d", "1h": "30d", "1d": "1y"}[interval]
     df = yf.download(ticker, interval=interval, period=period, progress=False)
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-
     if df.empty:
         continue
 
     df = compute_indicators(df)
     latest = df.iloc[-1]
-
-    # Support/Resistance
-    support, resistance = get_support_resistance(df)
     price = latest['Close']
+
+    support, resistance = get_support_resistance(df)
     near_support = "Yes" if not np.isnan(support) and price <= support * 1.02 else "No"
     near_resistance = "Yes" if not np.isnan(resistance) and price >= resistance * 0.98 else "No"
 
-    # Volume Breakout Strength
-    avg_volume = df['Volume'].iloc[-20:].mean()
+    # Breakout Strength Logic
+    avg_volume = df['Volume'].rolling(window=20).mean().iloc[-1]
     current_volume = latest['Volume']
-    breakout_strength = "Strong" if current_volume >= 1.5 * avg_volume else "Weak"
+    if not np.isnan(resistance) and price > resistance:
+        if current_volume >= 1.5 * avg_volume:
+            breakout_strength = "Strong"
+        else:
+            breakout_strength = "Weak"
+    else:
+        breakout_strength = "No Breakout"
 
     # Signal Logic
     signals = {
