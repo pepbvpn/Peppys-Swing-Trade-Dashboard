@@ -5,6 +5,7 @@ import streamlit as st
 import requests
 from streamlit_autorefresh import st_autorefresh
 from scipy.signal import argrelextrema
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Entry Signal Dashboard", layout="wide")
 st.title("📈 Peppy's Final Intraday Entry Signal Dashboard")
@@ -14,6 +15,16 @@ st_autorefresh(interval=120000, limit=None, key="refresh")
 
 # --- User Inputs ---
 ticker = st.text_input("Enter Ticker Symbol", value="AAPL")
+lookback_days = st.selectbox(
+    "Select Lookback Period for Insider & Analyst Activity:",
+    options=[30, 60, 90],
+    format_func=lambda x: f"Last {x} Days"
+)
+
+# --- Date Range for Filtering ---
+today = datetime.today()
+from_date = (today - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+to_date = today.strftime("%Y-%m-%d")
 
 # --- Show Current Price ---
 if ticker:
@@ -28,7 +39,10 @@ if ticker:
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
 intervals = ["15m", "1h", "1d"]
 
-# --- Finnhub News Sentiment ---
+# --- Finnhub API Key ---
+finnhub_api_key = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
+
+# --- News Sentiment ---
 def fetch_news_sentiment(symbol, api_key):
     url = f"https://finnhub.io/api/v1/news-sentiment?symbol={symbol}&token={api_key}"
     try:
@@ -49,13 +63,40 @@ def fetch_news_sentiment(symbol, api_key):
     except:
         return "Error", 0, 0
 
-# --- Show News Sentiment ---
-finnhub_api_key = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
 sentiment, bullish, bearish = fetch_news_sentiment(ticker, finnhub_api_key)
 st.markdown("### 📰 News Sentiment")
 st.write(f"**Overall Sentiment:** {sentiment}")
 st.write(f"**Bullish %:** {bullish}%")
 st.write(f"**Bearish %:** {bearish}%")
+
+# --- Analyst Ratings ---
+st.markdown("### 📊 Analyst Recommendations")
+analyst_url = f"https://finnhub.io/api/v1/stock/recommendation?symbol={ticker}&token={finnhub_api_key}"
+try:
+    response = requests.get(analyst_url)
+    data = response.json()
+    filtered = [r for r in data if from_date <= r['period'] <= to_date]
+    if filtered:
+        df_analyst = pd.DataFrame(filtered)[["period", "strongBuy", "buy", "hold", "sell", "strongSell"]]
+        st.dataframe(df_analyst.set_index("period"))
+    else:
+        st.info("No analyst data found for selected range.")
+except:
+    st.warning("Failed to fetch analyst data.")
+
+# --- Insider Trades ---
+st.markdown("### 🕵️ Insider Transactions")
+insider_url = f"https://finnhub.io/api/v1/stock/insider-transactions?symbol={ticker}&from={from_date}&to={to_date}&token={finnhub_api_key}"
+try:
+    response = requests.get(insider_url)
+    data = response.json().get("data", [])
+    if data:
+        df_insider = pd.DataFrame(data)[["name", "transactionDate", "transactionType", "share", "price"]]
+        st.dataframe(df_insider.sort_values("transactionDate", ascending=False).reset_index(drop=True))
+    else:
+        st.info("No insider trades found for selected range.")
+except:
+    st.warning("Failed to fetch insider trade data.")
 
 # --- Indicator Calculations ---
 def compute_indicators(data):
@@ -115,10 +156,7 @@ for interval in intervals:
     avg_volume = df['Volume'].rolling(window=20).mean().iloc[-1]
     current_volume = latest['Volume']
     if not np.isnan(resistance) and price > resistance:
-        if current_volume >= 1.5 * avg_volume:
-            breakout_strength = "Strong"
-        else:
-            breakout_strength = "Weak"
+        breakout_strength = "Strong" if current_volume >= 1.5 * avg_volume else "Weak"
     else:
         breakout_strength = "No Breakout"
 
@@ -154,8 +192,9 @@ for interval in intervals:
         "Trade Readiness Score": f"{score}/4"
     })
 
-# --- Display ---
+# --- Display Final Data ---
 if results:
+    st.markdown("### 📋 Indicator & Signal Summary")
     st.dataframe(pd.DataFrame(results).set_index("Interval"))
 else:
     st.warning("No data found. Try a different ticker or wait for more candles to build.")
