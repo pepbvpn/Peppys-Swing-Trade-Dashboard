@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import streamlit as st
+import requests
 from streamlit_autorefresh import st_autorefresh
 from scipy.signal import argrelextrema
 
@@ -26,6 +27,35 @@ if ticker:
 
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
 intervals = ["15m", "1h", "1d"]
+
+# --- Finnhub News Sentiment ---
+def fetch_news_sentiment(symbol, api_key):
+    url = f"https://finnhub.io/api/v1/news-sentiment?symbol={symbol}&token={api_key}"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            bullish = data.get("sentiment", {}).get("bullishPercent", 0)
+            bearish = data.get("sentiment", {}).get("bearishPercent", 0)
+            score = bullish - bearish
+            sentiment = (
+                "Positive" if score > 5 else
+                "Negative" if score < -5 else
+                "Neutral"
+            )
+            return sentiment, round(bullish, 2), round(bearish, 2)
+        else:
+            return "Unavailable", 0, 0
+    except:
+        return "Error", 0, 0
+
+# --- Show News Sentiment ---
+finnhub_api_key = "d1g2cp1r01qk4ao0k610d1g2cp1r01qk4ao0k61g"
+sentiment, bullish, bearish = fetch_news_sentiment(ticker, finnhub_api_key)
+st.markdown("### 📰 News Sentiment")
+st.write(f"**Overall Sentiment:** {sentiment}")
+st.write(f"**Bullish %:** {bullish}%")
+st.write(f"**Bearish %:** {bearish}%")
 
 # --- Indicator Calculations ---
 def compute_indicators(data):
