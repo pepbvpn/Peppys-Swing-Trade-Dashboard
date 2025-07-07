@@ -89,6 +89,11 @@ for interval in intervals:
     near_support = "Yes" if not np.isnan(support) and price <= support * 1.02 else "No"
     near_resistance = "Yes" if not np.isnan(resistance) and price >= resistance * 0.98 else "No"
 
+    # Volume Breakout Strength
+    avg_volume = df['Volume'].iloc[-20:].mean()
+    current_volume = latest['Volume']
+    breakout_strength = "Strong" if current_volume >= 1.5 * avg_volume else "Weak"
+
     # Signal Logic
     signals = {
         "RSI Signal": "✅" if (option_type == "CALL" and latest['RSI'] < 35) or
@@ -116,6 +121,7 @@ for interval in intervals:
         "Resistance": resistance,
         "Near Support": near_support,
         "Near Resistance": near_resistance,
+        "Breakout Strength": breakout_strength,
         **signals,
         "Trade Readiness Score": f"{score}/4"
     })
