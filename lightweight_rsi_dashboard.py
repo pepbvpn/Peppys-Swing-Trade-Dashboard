@@ -9,6 +9,7 @@ st.title("📊 Custom Ticker Trade Readiness Scanner")
 st_autorefresh(interval=300000, limit=None, key="refresh")  # Refresh every 5 min
 
 option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
+min_score = st.slider("Minimum Score per Interval (out of 4)", min_value=1, max_value=4, value=2)
 
 # Custom tickers to scan
 tickers_to_scan = [
@@ -78,11 +79,11 @@ for ticker in tickers_to_scan:
         interval: get_trade_score(ticker, interval, option_type)
         for interval in ["15m", "1h", "1d"]
     }
-    if all(score >= 2 for score in scores.values()):
+    if all(score >= min_score for score in scores.values()):
         results.append({"Ticker": ticker, **scores})
 
 if results:
-    st.success("✅ Tickers with Trade Readiness ≥ 2/4 across all timeframes (15m, 1h, 1d)")
+    st.success(f"✅ Tickers with Trade Readiness ≥ {min_score}/4 across all timeframes (15m, 1h, 1d)")
     st.dataframe(pd.DataFrame(results))
 else:
     st.warning("No tickers found with the desired multi-interval setup right now.")
