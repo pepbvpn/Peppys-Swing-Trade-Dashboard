@@ -1,136 +1,79 @@
-
-import streamlit as st
-import pandas as pd
 import yfinance as yf
-import ta
+import pandas as pd
 import numpy as np
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="Swing Trade Scanner", layout="wide")
-st.title("📈 Swing Trade Signal Dashboard")
+st.set_page_config(page_title="S&P 500 Readiness Scanner", layout="wide")
+st.title("📊 S&P 500 Trade Readiness Scanner")
+st_autorefresh(interval=300000, limit=None, key="refresh")  # Refresh every 5 min
 
-tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
-interval = st.selectbox("Select interval", options=["1d", "1h", "15m"])
-period_map = {"1d": "1y", "1h": "60d", "15m": "10d"}
-period = period_map[interval]
+option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
 
-tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
+@st.cache_data(ttl=86400)
+def get_sp500_tickers():
+    table = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
+    return table[0]['Symbol'].tolist()
 
-profit_target_pct = 0.10
-stop_loss_pct = 0.05
-entry_buffer_pct = 0.005
+def compute_indicators(data):
+    delta = data['Close'].diff()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = pd.Series(gain).rolling(window=14).mean()
+    avg_loss = pd.Series(loss).rolling(window=14).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    data['RSI'] = rsi.values
 
-def find_support_resistance_fallback(prices, window=10):
-    supports, resistances = [], []
-    prices = np.array(prices).flatten()
+    ema12 = data['Close'].ewm(span=12, adjust=False).mean()
+    ema26 = data['Close'].ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    data['MACD'] = macd
+    data['Signal'] = signal
 
-    for i in range(window, len(prices) - window):
-        is_support = all(prices[i] < prices[i - j] and prices[i] < prices[i + j] for j in range(1, window))
-        is_resistance = all(prices[i] > prices[i - j] and prices[i] > prices[i + j] for j in range(1, window))
-        if is_support:
-            supports.append(float(prices[i]))
-        if is_resistance:
-            resistances.append(float(prices[i]))
+    data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
+    data['VP'] = data['TP'] * data['Volume']
+    data['Cumulative_VP'] = data['VP'].cumsum()
+    data['Cumulative_Volume'] = data['Volume'].cumsum()
+    data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
 
-    supports = sorted(set(supports))
-    resistances = sorted(set(resistances))
+    data['SMA_50'] = data['Close'].rolling(window=50).mean()
+    data['SMA_200'] = data['Close'].rolling(window=200).mean()
+    return data
 
-    if supports and resistances:
-        return supports[-1], resistances[0]
-    elif prices.size > 0:
-        return float(np.nanmin(prices)), float(np.nanmax(prices))
-    else:
-        return np.nan, np.nan
+def get_trade_score(ticker, interval, option_type="CALL"):
+    try:
+        period = {"15m": "10d", "1h": "30d", "1d": "1y"}[interval]
+        df = yf.download(ticker, interval=interval, period=period, progress=False)
+        if df.empty:
+            return 0
+        df = compute_indicators(df)
+        df.dropna(inplace=True)
+        latest = df.iloc[-1]
 
+        signals = {
+            "RSI": (option_type == "CALL" and latest['RSI'] < 35) or (option_type == "PUT" and latest['RSI'] > 70),
+            "MACD": (option_type == "CALL" and latest['MACD'] > latest['Signal']) or (option_type == "PUT" and latest['MACD'] < latest['Signal']),
+            "VWAP": (option_type == "CALL" and latest['Close'] > latest['VWAP']) or (option_type == "PUT" and latest['Close'] < latest['VWAP']),
+            "SMA": (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200'])
+        }
+        return sum(signals.values())
+    except Exception:
+        return 0
+
+st.info("Scanning all S&P 500 tickers. This may take a few minutes...")
 results = []
+for ticker in get_sp500_tickers():
+    scores = {
+        interval: get_trade_score(ticker, interval, option_type)
+        for interval in ["15m", "1h", "1d"]
+    }
+    if all(score >= 3 for score in scores.values()):
+        results.append({"Ticker": ticker, **scores})
 
-for ticker in tickers:
-    df = yf.download(ticker, period=period, interval=interval, progress=False)
-
-    if df.empty or len(df) < 100:
-        continue
-
-    close_series = df['Close']
-    if isinstance(close_series, pd.DataFrame):
-        close_series = close_series.squeeze()
-
-    df['RSI'] = ta.momentum.RSIIndicator(close=close_series).rsi()
-    macd = ta.trend.MACD(close=close_series)
-    df['MACD'] = macd.macd()
-    df['MACD_SIGNAL'] = macd.macd_signal()
-    df['20EMA'] = close_series.ewm(span=20).mean()
-    df['50EMA'] = close_series.ewm(span=50).mean()
-    df['SMA50'] = close_series.rolling(window=50).mean()
-    df['SMA200'] = close_series.rolling(window=200).mean()
-
-    volume = df['Volume']
-    volume_avg = volume.rolling(window=10).mean()
-    volume, volume_avg = volume.align(volume_avg, join='inner')
-    df = df.loc[volume.index]
-
-    df['Volume'] = volume
-    df['Volume_Avg'] = volume_avg
-    df['Volume_Spike'] = volume > volume_avg
-
-    df.dropna(inplace=True)
-    if df.empty:
-        continue
-
-    latest = df.iloc[-1]
-    support, resistance = find_support_resistance_fallback(df['Close'].values)
-
-    entry_signal = (
-        latest['RSI'].item() > 30 and latest['RSI'].item() < 40 and
-        latest['MACD'].item() > latest['MACD_SIGNAL'].item() and
-        latest['Close'].item() > latest['20EMA'].item() and
-        latest['Close'].item() < latest['50EMA'].item() and
-        bool(latest['Volume_Spike'].item())
-    )
-
-    entry_watch = latest['High'] * (1 + entry_buffer_pct)
-    target_price = entry_watch * (1 + profit_target_pct)
-    stop_price = entry_watch * (1 - stop_loss_pct)
-
-    price = latest['Close'].item()
-    sma50 = latest['SMA50'].item()
-    sma200 = latest['SMA200'].item()
-    if not np.isnan(price) and not np.isnan(sma50) and not np.isnan(sma200):
-        if price > sma50 and sma50 > sma200:
-            trend = "📈 Bullish"
-        elif price < sma50 and sma50 < sma200:
-            trend = "📉 Bearish"
-        else:
-            trend = "↔️ Neutral"
-    else:
-        trend = "❓ Not enough data"
-
-    results.append({
-        "Ticker": ticker,
-        "Latest Close": round(price, 2),
-        "Entry Watch Price": round(entry_watch, 2),
-        "Sell Target (10%)": round(target_price, 2),
-        "Stop-Loss (5%)": round(stop_price, 2),
-        "RSI": round(latest['RSI'].item(), 2),
-        "MACD > Signal": latest['MACD'].item() > latest['MACD_SIGNAL'].item(),
-        "Volume": int(latest['Volume']),
-        "Volume Spike": bool(latest['Volume_Spike'].item()),
-        "SMA50": round(sma50, 2),
-        "SMA200": round(sma200, 2),
-        "Support": round(support, 2) if not np.isnan(support) else "N/A",
-        "Resistance": round(resistance, 2) if not np.isnan(resistance) else "N/A",
-        "Trend": trend,
-        "Long-Term Signal": "✅ BUY & HOLD" if (
-            price > sma200 and
-            sma50 > sma200 and
-            "OBV" in df.columns and
-            latest["OBV"] > df["OBV"].rolling(window=20).mean().iloc[-1]
-        ) else "❌ WAIT",
-        "Signal": "✅ BUY" if entry_signal else "❌ NO ENTRY"
-    })
-
-df = pd.DataFrame(results)
-
-if not df.empty:
-    st.dataframe(df)
-    st.download_button("Download CSV", df.to_csv(index=False), file_name="swing_signals.csv")
+if results:
+    st.success("✅ Tickers with Trade Readiness ≥ 3/4 across all timeframes")
+    st.dataframe(pd.DataFrame(results))
 else:
-    st.info("No signals available for the selected tickers and interval.")
+    st.warning("No tickers found with strong multi-interval setup right now.")
