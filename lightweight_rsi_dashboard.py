@@ -45,7 +45,6 @@ def compute_indicators(data):
     data['SMA_50'] = data['Close'].rolling(window=50).mean()
     data['SMA_200'] = data['Close'].rolling(window=200).mean()
 
-    # On-Balance Volume (OBV)
     obv = [0]
     for i in range(1, len(data)):
         if data['Close'].iloc[i] > data['Close'].iloc[i - 1]:
@@ -55,7 +54,7 @@ def compute_indicators(data):
         else:
             obv.append(obv[-1])
     data['OBV'] = obv
-    data['OBV_Slope'] = data['OBV'].diff().rolling(window=5).mean()
+    data['OBV_Slope'] = pd.Series(obv).diff().rolling(window=5).mean()
 
     return data
 
@@ -67,7 +66,7 @@ def get_signals(latest, option_type):
         "SMA": (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200'])
     }
 
-def get_trade_score(ticker, interval, option_type="CALL"):
+def get_trade_score_and_sentiment(ticker, interval, option_type="CALL"):
     try:
         period = {"15m": "10d", "1h": "30d", "1d": "1y"}[interval]
         df = yf.download(ticker, interval=interval, period=period, progress=False)
@@ -76,7 +75,7 @@ def get_trade_score(ticker, interval, option_type="CALL"):
             df.columns = df.columns.get_level_values(0)
 
         if df.empty:
-            return 0, "Unknown"
+            return 0, "No data"
 
         df = compute_indicators(df)
         df.dropna(inplace=True)
@@ -84,7 +83,6 @@ def get_trade_score(ticker, interval, option_type="CALL"):
         signals = get_signals(latest, option_type)
         score = list(signals.values()).count(True)
 
-        # Determine institutional sentiment
         slope = latest['OBV_Slope']
         if slope > 0:
             sentiment = "Accumulating"
@@ -104,12 +102,12 @@ for ticker in tickers_to_scan:
     row = {"Ticker": ticker}
     sentiments = []
     for interval in ["15m", "1h", "1d"]:
-        score, sentiment = get_trade_score(ticker, interval, option_type)
+        score, sentiment = get_trade_score_and_sentiment(ticker, interval, option_type)
         if score < min_score:
             passes_filter = False
             break
         row[f"{interval} Score"] = f"{score}/4"
-        sentiments.append(sentiment)
+        sentiments.append(f"{interval}: {sentiment}")
     if passes_filter:
         row["Institutional Sentiment"] = ", ".join(sentiments)
         results.append(row)
