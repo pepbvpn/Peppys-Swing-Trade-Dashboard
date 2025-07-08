@@ -45,17 +45,29 @@ def compute_indicators(data):
     data['SMA_50'] = data['Close'].rolling(window=50).mean()
     data['SMA_200'] = data['Close'].rolling(window=200).mean()
 
+    # On-Balance Volume (OBV)
+    obv = [0]
+    for i in range(1, len(data)):
+        if data['Close'].iloc[i] > data['Close'].iloc[i - 1]:
+            obv.append(obv[-1] + data['Volume'].iloc[i])
+        elif data['Close'].iloc[i] < data['Close'].iloc[i - 1]:
+            obv.append(obv[-1] - data['Volume'].iloc[i])
+        else:
+            obv.append(obv[-1])
+    data['OBV'] = obv
+    data['OBV_Slope'] = data['OBV'].diff().rolling(window=5).mean()
+
     return data
 
 def get_signals(latest, option_type):
     return {
-        "RSI": "✅" if (option_type == "CALL" and latest['RSI'] < 35) or (option_type == "PUT" and latest['RSI'] > 70) else "❌",
-        "MACD": "✅" if (option_type == "CALL" and latest['MACD'] > latest['Signal']) or (option_type == "PUT" and latest['MACD'] < latest['Signal']) else "❌",
-        "VWAP": "✅" if (option_type == "CALL" and latest['Close'] > latest['VWAP']) or (option_type == "PUT" and latest['Close'] < latest['VWAP']) else "❌",
-        "SMA": "✅" if (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200']) else "❌"
+        "RSI": (option_type == "CALL" and latest['RSI'] < 35) or (option_type == "PUT" and latest['RSI'] > 70),
+        "MACD": (option_type == "CALL" and latest['MACD'] > latest['Signal']) or (option_type == "PUT" and latest['MACD'] < latest['Signal']),
+        "VWAP": (option_type == "CALL" and latest['Close'] > latest['VWAP']) or (option_type == "PUT" and latest['Close'] < latest['VWAP']),
+        "SMA": (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200'])
     }
 
-def get_trade_score_and_signals(ticker, interval, option_type="CALL"):
+def get_trade_score(ticker, interval, option_type="CALL"):
     try:
         period = {"15m": "10d", "1h": "30d", "1d": "1y"}[interval]
         df = yf.download(ticker, interval=interval, period=period, progress=False)
@@ -64,32 +76,43 @@ def get_trade_score_and_signals(ticker, interval, option_type="CALL"):
             df.columns = df.columns.get_level_values(0)
 
         if df.empty:
-            return 0, {}
+            return 0, "Unknown"
 
         df = compute_indicators(df)
         df.dropna(inplace=True)
         latest = df.iloc[-1]
         signals = get_signals(latest, option_type)
-        score = list(signals.values()).count("✅")
-        return score, signals
+        score = list(signals.values()).count(True)
+
+        # Determine institutional sentiment
+        slope = latest['OBV_Slope']
+        if slope > 0:
+            sentiment = "Accumulating"
+        elif slope < 0:
+            sentiment = "Distributing"
+        else:
+            sentiment = "Neutral"
+
+        return score, sentiment
     except Exception:
-        return 0, {}
+        return 0, "Error"
 
 st.info("Scanning selected tickers. This may take a few moments...")
 results = []
 for ticker in tickers_to_scan:
     passes_filter = True
-    combined_row = {"Ticker": ticker}
+    row = {"Ticker": ticker}
+    sentiments = []
     for interval in ["15m", "1h", "1d"]:
-        score, signals = get_trade_score_and_signals(ticker, interval, option_type)
+        score, sentiment = get_trade_score(ticker, interval, option_type)
         if score < min_score:
             passes_filter = False
             break
-        combined_row[f"{interval} Score"] = f"{score}/4"
-        for k, v in signals.items():
-            combined_row[f"{interval} {k}"] = v
+        row[f"{interval} Score"] = f"{score}/4"
+        sentiments.append(sentiment)
     if passes_filter:
-        results.append(combined_row)
+        row["Institutional Sentiment"] = ", ".join(sentiments)
+        results.append(row)
 
 if results:
     st.success(f"✅ Tickers with Trade Readiness ≥ {min_score}/4 across all timeframes (15m, 1h, 1d)")
