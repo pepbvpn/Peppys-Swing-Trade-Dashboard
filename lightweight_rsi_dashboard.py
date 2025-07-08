@@ -47,7 +47,15 @@ def compute_indicators(data):
 
     return data
 
-def get_trade_score(ticker, interval, option_type="CALL"):
+def get_signals(latest, option_type):
+    return {
+        "RSI": "✅" if (option_type == "CALL" and latest['RSI'] < 35) or (option_type == "PUT" and latest['RSI'] > 70) else "❌",
+        "MACD": "✅" if (option_type == "CALL" and latest['MACD'] > latest['Signal']) or (option_type == "PUT" and latest['MACD'] < latest['Signal']) else "❌",
+        "VWAP": "✅" if (option_type == "CALL" and latest['Close'] > latest['VWAP']) or (option_type == "PUT" and latest['Close'] < latest['VWAP']) else "❌",
+        "SMA": "✅" if (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200']) else "❌"
+    }
+
+def get_trade_score_and_signals(ticker, interval, option_type="CALL"):
     try:
         period = {"15m": "10d", "1h": "30d", "1d": "1y"}[interval]
         df = yf.download(ticker, interval=interval, period=period, progress=False)
@@ -56,31 +64,32 @@ def get_trade_score(ticker, interval, option_type="CALL"):
             df.columns = df.columns.get_level_values(0)
 
         if df.empty:
-            return 0
+            return 0, {}
 
         df = compute_indicators(df)
         df.dropna(inplace=True)
         latest = df.iloc[-1]
-
-        signals = {
-            "RSI": (option_type == "CALL" and latest['RSI'] < 35) or (option_type == "PUT" and latest['RSI'] > 70),
-            "MACD": (option_type == "CALL" and latest['MACD'] > latest['Signal']) or (option_type == "PUT" and latest['MACD'] < latest['Signal']),
-            "VWAP": (option_type == "CALL" and latest['Close'] > latest['VWAP']) or (option_type == "PUT" and latest['Close'] < latest['VWAP']),
-            "SMA": (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200'])
-        }
-        return sum(signals.values())
+        signals = get_signals(latest, option_type)
+        score = list(signals.values()).count("✅")
+        return score, signals
     except Exception:
-        return 0
+        return 0, {}
 
 st.info("Scanning selected tickers. This may take a few moments...")
 results = []
 for ticker in tickers_to_scan:
-    scores = {
-        interval: get_trade_score(ticker, interval, option_type)
-        for interval in ["15m", "1h", "1d"]
-    }
-    if all(score >= min_score for score in scores.values()):
-        results.append({"Ticker": ticker, **scores})
+    passes_filter = True
+    combined_row = {"Ticker": ticker}
+    for interval in ["15m", "1h", "1d"]:
+        score, signals = get_trade_score_and_signals(ticker, interval, option_type)
+        if score < min_score:
+            passes_filter = False
+            break
+        combined_row[f"{interval} Score"] = f"{score}/4"
+        for k, v in signals.items():
+            combined_row[f"{interval} {k}"] = v
+    if passes_filter:
+        results.append(combined_row)
 
 if results:
     st.success(f"✅ Tickers with Trade Readiness ≥ {min_score}/4 across all timeframes (15m, 1h, 1d)")
