@@ -9,7 +9,7 @@ st.title("📈 Swing Trade Signal Strength Dashboard")
 
 tickers = [
     "NVDA", "AAPL", "MSFT", "TSLA", "SPY", "AMZN", "HOOD", "META", "WMT", "UNH",
-    "QQQ", "AMD", "TSM", "SMH", "XLY", "COIN", "AVGO", "BRK.B", "GOOGL"
+    "QQQ", "AMD", "TSM", "SMH", "XLY", "COIN", "AVGO", "BRK-B", "GOOGL"
 ]
 st.markdown(f"**Scanning Tickers:** {', '.join(tickers)}")
 
