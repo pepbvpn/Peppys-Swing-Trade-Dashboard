@@ -14,7 +14,7 @@ min_score = st.slider("Minimum Score per Interval (out of 4)", min_value=1, max_
 # Custom tickers to scan
 tickers_to_scan = [
     "TSLA", "NVDA", "AAPL", "SPY", "QQQ", "META", "AMD", "AMZN", "MSFT", "COIN",
-    "MU", "UBER", "GOOGL", "BRK.B", "SMH", "TSM", "XLY", "AVGO", "UNH", "WMT", "ORCL", "HOOD"
+    "MU", "GOOGL", "BRK.B", "SMH", "TSM", "XLY", "AVGO", "UNH", "WMT", "ORCL", "HOOD"
 ]
 
 def compute_indicators(data):
