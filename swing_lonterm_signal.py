@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # Page setup
 st.set_page_config(page_title="Swing Trade S&P 500 Scanner", layout="wide")
-st.title("📈 P's S&P500 Ultimate Swing Trade Signal Strength Dashboard")
+st.title("📈 P's S&P500 Swing Trade Signal Strength Dashboard")
 
 # Auto-refresh every 5 minutes (300000 ms)
 st_autorefresh(interval=300000, limit=None, key="auto-refresh")
