@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # Page setup
 st.set_page_config(page_title="Swing Trade Multi-Interval Scanner", layout="wide")
-st.title("📈 Pep's Selected Stocks Swing Trade Signal Strength Dashboard")
+st.title("📈 Peppy's Ultimate Swing Trade Signal Strength Dashboard")
 
 # Auto-refresh every 2 minutes (120000 ms)
 st_autorefresh(interval=120000, limit=None, key="auto-refresh")
