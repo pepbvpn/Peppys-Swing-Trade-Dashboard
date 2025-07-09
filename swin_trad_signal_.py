@@ -1,38 +1,28 @@
+import streamlit as st
 import pandas as pd
 import yfinance as yf
 import ta
 import numpy as np
 import requests
+from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
 # Page setup
-st.set_page_config(page_title="Swing Trade S&P 500 Scanner", layout="wide")
-st.title("📈 P's S&P500 Swing Trade Signal Strength Dashboard")
+st.set_page_config(page_title="📊 Peppy's Signal Dashboards", layout="wide")
 
-# Auto-refresh every 5 minutes (300000 ms)
+# Auto-refresh every 5 mins (300,000 ms)
 st_autorefresh(interval=300000, limit=None, key="auto-refresh")
 
-# Timestamp of last refresh
-from datetime import datetime
+# Timestamp
 now = datetime.now().astimezone()
 now_cst = now.astimezone().strftime('%Y-%m-%d %H:%M')
 st.markdown(f"**Last Refreshed:** {now_cst} CST")
 
-# Get S&P 500 tickers from Wikipedia
-@st.cache_data(show_spinner=False)
-def get_sp500_tickers():
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    tables = pd.read_html(requests.get(url).text)
-    df = tables[0]
-    return df["Symbol"].str.replace(".", "-", regex=False).tolist()
-
-tickers = get_sp500_tickers()
-st.markdown(f"**Scanning {len(tickers)} S&P 500 tickers...**")
-
+# Time intervals
 intervals = ["15m", "1h", "1d"]
 period_map = {"15m": "10d", "1h": "60d", "1d": "1y"}
 
-# Signal classification
+# Signal classification logic
 def classify_strength(trends, sentiments):
     if all(t == "📈 Bullish" for t in trends) and all(s == "📈 Accumulating" for s in sentiments):
         return "✅ PERFECT"
@@ -51,7 +41,7 @@ def classify_strength(trends, sentiments):
             return "💪 STRONG"
     return "😐 NEUTRAL"
 
-# Fetch trend and sentiment per interval
+# OBV trend + sentiment analyzer
 @st.cache_data(show_spinner=False)
 def get_trend_sentiment(ticker, interval):
     yf_ticker = "BRK-B" if ticker.upper() == "BRK.B" else ticker.upper()
@@ -88,34 +78,70 @@ def get_trend_sentiment(ticker, interval):
             sentiment = "➖ Neutral"
 
         return trend, sentiment
-
-    except Exception as e:
-        st.text(f"Error for {ticker} at {interval}: {e}")
+    except:
         return "❓", "❓"
 
-# Main scan
-results = []
-for ticker in tickers:
-    trend_list, sentiment_list = [], []
-    interval_details = {}
-    for interval in intervals:
-        trend, sentiment = get_trend_sentiment(ticker, interval)
-        trend_list.append(trend)
-        sentiment_list.append(sentiment)
-        interval_details[f"{interval} Trend"] = trend
-        interval_details[f"{interval} Sentiment"] = sentiment
-    strength = classify_strength(trend_list, sentiment_list)
-    display_ticker = "BRK.B" if ticker == "BRK-B" else ticker
-    results.append({"Ticker": display_ticker, "Signal Strength": strength, **interval_details})
+# Get S&P 500 from Wikipedia
+@st.cache_data(show_spinner=False)
+def get_sp500_tickers():
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    tables = pd.read_html(requests.get(url).text)
+    df = tables[0]
+    return df["Symbol"].str.replace(".", "-", regex=False).tolist()
 
-# Display table with filter
-df = pd.DataFrame(results)
-signal_filter = st.selectbox("Filter by Signal Strength:", ["All"] + df["Signal Strength"].unique().tolist())
-if signal_filter != "All":
-    df = df[df["Signal Strength"] == signal_filter]
+# Peppy's Custom List
+custom_tickers = [
+    "NVDA", "AAPL", "MSFT", "TSLA", "SPY", "AMZN", "HOOD", "META", "WMT", "UNH",
+    "QQQ", "AMD", "TSM", "SMH", "XLY", "COIN", "AVGO", "BRK.B", "GOOGL"
+]
 
-if not df.empty:
+# MAIN UI TABS
+tab1, tab2 = st.tabs(["📈 S&P 500 Dashboard", "⭐ Peppy's Watchlist"])
+
+# Tab 1 - S&P 500
+with tab1:
+    st.subheader("S&P 500 Multi-Interval Signal Strength")
+    sp_tickers = get_sp500_tickers()
+    results = []
+
+    for ticker in sp_tickers:
+        trend_list, sentiment_list, interval_details = [], [], {}
+        for interval in intervals:
+            trend, sentiment = get_trend_sentiment(ticker, interval)
+            trend_list.append(trend)
+            sentiment_list.append(sentiment)
+            interval_details[f"{interval} Trend"] = trend
+            interval_details[f"{interval} Sentiment"] = sentiment
+        strength = classify_strength(trend_list, sentiment_list)
+        display_ticker = "BRK.B" if ticker == "BRK-B" else ticker
+        results.append({"Ticker": display_ticker, "Signal Strength": strength, **interval_details})
+
+    df = pd.DataFrame(results)
+    filter_choice = st.selectbox("Filter by Signal Strength", ["All"] + sorted(df["Signal Strength"].unique()))
+    if filter_choice != "All":
+        df = df[df["Signal Strength"] == filter_choice]
     st.dataframe(df)
     st.download_button("Download CSV", df.to_csv(index=False), file_name="sp500_signals.csv")
-else:
-    st.info("No data available.")
+
+# Tab 2 - Custom Watchlist
+with tab2:
+    st.subheader("Peppy's Top Watchlist Signals")
+    results = []
+    for ticker in custom_tickers:
+        trend_list, sentiment_list, interval_details = [], [], {}
+        for interval in intervals:
+            trend, sentiment = get_trend_sentiment(ticker, interval)
+            trend_list.append(trend)
+            sentiment_list.append(sentiment)
+            interval_details[f"{interval} Trend"] = trend
+            interval_details[f"{interval} Sentiment"] = sentiment
+        strength = classify_strength(trend_list, sentiment_list)
+        display_ticker = "BRK.B" if ticker == "BRK.B" else ticker
+        results.append({"Ticker": display_ticker, "Signal Strength": strength, **interval_details})
+
+    df = pd.DataFrame(results)
+    filter_choice = st.selectbox("Filter Watchlist by Signal", ["All"] + sorted(df["Signal Strength"].unique()))
+    if filter_choice != "All":
+        df = df[df["Signal Strength"] == filter_choice]
+    st.dataframe(df)
+    st.download_button("Download CSV", df.to_csv(index=False), file_name="watchlist_signals.csv")
