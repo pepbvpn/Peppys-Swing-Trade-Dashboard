@@ -52,7 +52,9 @@ def get_trend_sentiment(ticker, interval):
         df = yf.download(yf_ticker, interval=interval, period=period_map[interval], progress=False)
         if df.empty or "Close" not in df.columns or "Volume" not in df.columns:
             return "❓", "❓"
-        close, volume = df["Close"].dropna(), df["Volume"].dropna()
+
+        close = df["Close"].dropna().squeeze()
+        volume = df["Volume"].dropna().squeeze()
         if len(close) < 60 or len(volume) < 60:
             return "❓", "❓"
 
