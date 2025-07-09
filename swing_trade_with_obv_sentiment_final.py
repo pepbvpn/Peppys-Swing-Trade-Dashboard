@@ -7,7 +7,7 @@ import numpy as np
 st.set_page_config(page_title="Swing Trade Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Dashboard")
 
-tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY")
+tickers_input = st.text_input("Enter ticker symbols (comma-separated)", value="NVDA, AAPL, MSFT, TSLA, SPY, AMZN, HOOD, META, WMT, UNH, QQQ, AMD, TSM, SMH, XLY, COIN, AVGO, BRK.B, GOOGL")
 interval = st.selectbox("Select interval", options=["15m", "1h", "1d"])
 period_map = {
     "15m": "10d",
