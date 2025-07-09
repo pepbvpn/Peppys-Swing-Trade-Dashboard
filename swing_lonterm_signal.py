@@ -1,86 +1,122 @@
-import yfinance as yf
-import pandas as pd
-import numpy as np
 import streamlit as st
+import pandas as pd
+import yfinance as yf
+import ta
+import numpy as np
+import requests
 from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="S&P 500 Trade Readiness Scanner", layout="wide")
-st.title("📊 S&P 500 Trade Readiness Scanner")
-st_autorefresh(interval=300000, limit=None, key="refresh")  # Refresh every 5 min
+# Page setup
+st.set_page_config(page_title="Swing Trade S&P 500 Scanner", layout="wide")
+st.title("📈 Peppy's Ultimate Swing Trade Signal Strength Dashboard")
 
-option_type = st.selectbox("Trade Direction", ["CALL", "PUT"])
+# Auto-refresh every 5 minutes (300000 ms)
+st_autorefresh(interval=300000, limit=None, key="auto-refresh")
 
-@st.cache_data(ttl=86400)
+# Timestamp of last refresh
+from datetime import datetime
+now = datetime.now().astimezone()
+now_cst = now.astimezone().strftime('%Y-%m-%d %H:%M')
+st.markdown(f"**Last Refreshed:** {now_cst} CST")
+
+# Get S&P 500 tickers from Wikipedia
+@st.cache_data(show_spinner=False)
 def get_sp500_tickers():
-    table = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
-    return table[0]['Symbol'].tolist()
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    tables = pd.read_html(requests.get(url).text)
+    df = tables[0]
+    return df["Symbol"].str.replace(".", "-", regex=False).tolist()
 
-def compute_indicators(data):
-    delta = data['Close'].diff()
-    gain = pd.Series(np.where(delta > 0, delta, 0), index=data.index)
-    loss = pd.Series(np.where(delta < 0, -delta, 0), index=data.index)
-    avg_gain = gain.rolling(window=14).mean()
-    avg_loss = loss.rolling(window=14).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
-    data['RSI'] = rsi
+tickers = get_sp500_tickers()
+st.markdown(f"**Scanning {len(tickers)} S&P 500 tickers...**")
 
-    ema12 = data['Close'].ewm(span=12, adjust=False).mean()
-    ema26 = data['Close'].ewm(span=26, adjust=False).mean()
-    macd = ema12 - ema26
-    signal = macd.ewm(span=9, adjust=False).mean()
-    data['MACD'] = macd
-    data['Signal'] = signal
+intervals = ["15m", "1h", "1d"]
+period_map = {"15m": "10d", "1h": "60d", "1d": "1y"}
 
-    data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
-    volume = data['Volume'] if isinstance(data['Volume'], pd.Series) else data['Volume'].iloc[:, 0]
-    data['VP'] = data['TP'] * volume
-    data['Cumulative_VP'] = data['VP'].cumsum()
-    data['Cumulative_Volume'] = volume.cumsum()
-    data['VWAP'] = data['Cumulative_VP'] / data['Cumulative_Volume']
+# Signal classification
+def classify_strength(trends, sentiments):
+    if all(t == "📈 Bullish" for t in trends) and all(s == "📈 Accumulating" for s in sentiments):
+        return "✅ PERFECT"
+    if sum(t == "📉 Bearish" for t in trends) >= 2:
+        return "⚠️ WEAK"
+    if all(s == "📉 Distributing" for s in sentiments):
+        return "⚠️ WEAK"
+    for t, s in zip(trends, sentiments):
+        if t == "📉 Bearish" and s == "📉 Distributing":
+            return "⚠️ WEAK"
+    if all(t in ["📈 Bullish", "↔️ Neutral"] for t in trends) and \
+       all(s in ["📈 Accumulating", "📉 Distributing"] for s in sentiments):
+        has_both = any(t == "📈 Bullish" and s == "📈 Accumulating" for t, s in zip(trends, sentiments))
+        dist_count = sum(s == "📉 Distributing" for s in sentiments)
+        if has_both and dist_count <= 1:
+            return "💪 STRONG"
+    return "😐 NEUTRAL"
 
-    data['SMA_50'] = data['Close'].rolling(window=50).mean()
-    data['SMA_200'] = data['Close'].rolling(window=200).mean()
-
-    return data
-
-def get_trade_score(ticker, interval, option_type="CALL"):
+# Fetch trend and sentiment per interval
+@st.cache_data(show_spinner=False)
+def get_trend_sentiment(ticker, interval):
+    yf_ticker = "BRK-B" if ticker.upper() == "BRK.B" else ticker.upper()
     try:
-        period = {"15m": "10d", "1h": "30d", "1d": "1y"}[interval]
-        df = yf.download(ticker, interval=interval, period=period, progress=False)
+        df = yf.download(yf_ticker, interval=interval, period=period_map[interval], progress=False)
+        if df.empty or "Close" not in df.columns or "Volume" not in df.columns:
+            return "❓", "❓"
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        close = df['Close'].dropna().squeeze()
+        volume = df['Volume'].dropna().squeeze()
+        if len(close) < 60 or len(volume) < 60:
+            return "❓", "❓"
 
-        if df.empty:
-            return 0
+        obv = ta.volume.OnBalanceVolumeIndicator(close=close, volume=volume).on_balance_volume()
+        df["OBV"] = obv
+        sma50 = close.rolling(50).mean()
+        sma200 = close.rolling(200).mean()
 
-        df = compute_indicators(df)
-        df.dropna(inplace=True)
-        latest = df.iloc[-1]
+        # Trend
+        if close.iloc[-1] > sma50.iloc[-1] > sma200.iloc[-1]:
+            trend = "📈 Bullish"
+        elif close.iloc[-1] < sma50.iloc[-1] < sma200.iloc[-1]:
+            trend = "📉 Bearish"
+        else:
+            trend = "↔️ Neutral"
 
-        signals = {
-            "RSI": (option_type == "CALL" and latest['RSI'] < 35) or (option_type == "PUT" and latest['RSI'] > 70),
-            "MACD": (option_type == "CALL" and latest['MACD'] > latest['Signal']) or (option_type == "PUT" and latest['MACD'] < latest['Signal']),
-            "VWAP": (option_type == "CALL" and latest['Close'] > latest['VWAP']) or (option_type == "PUT" and latest['Close'] < latest['VWAP']),
-            "SMA": (option_type == "CALL" and latest['Close'] > latest['SMA_50'] > latest['SMA_200']) or (option_type == "PUT" and latest['Close'] < latest['SMA_50'] < latest['SMA_200'])
-        }
-        return sum(signals.values())
-    except Exception:
-        return 0
+        # Sentiment
+        obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
+        if obv_diff > 0:
+            sentiment = "📈 Accumulating"
+        elif obv_diff < 0:
+            sentiment = "📉 Distributing"
+        else:
+            sentiment = "➖ Neutral"
 
-st.info("Scanning all S&P 500 tickers. This may take a few minutes...")
+        return trend, sentiment
+
+    except Exception as e:
+        st.text(f"Error for {ticker} at {interval}: {e}")
+        return "❓", "❓"
+
+# Main scan
 results = []
-for ticker in get_sp500_tickers():
-    scores = {
-        interval: get_trade_score(ticker, interval, option_type)
-        for interval in ["15m", "1h", "1d"]
-    }
-    if all(score >= 3 for score in scores.values()):
-        results.append({"Ticker": ticker, **scores})
+for ticker in tickers:
+    trend_list, sentiment_list = [], []
+    interval_details = {}
+    for interval in intervals:
+        trend, sentiment = get_trend_sentiment(ticker, interval)
+        trend_list.append(trend)
+        sentiment_list.append(sentiment)
+        interval_details[f"{interval} Trend"] = trend
+        interval_details[f"{interval} Sentiment"] = sentiment
+    strength = classify_strength(trend_list, sentiment_list)
+    display_ticker = "BRK.B" if ticker == "BRK-B" else ticker
+    results.append({"Ticker": display_ticker, "Signal Strength": strength, **interval_details})
 
-if results:
-    st.success("✅ Tickers with Trade Readiness ≥ 3/4 across all timeframes")
-    st.dataframe(pd.DataFrame(results))
+# Display table with filter
+df = pd.DataFrame(results)
+signal_filter = st.selectbox("Filter by Signal Strength:", ["All"] + df["Signal Strength"].unique().tolist())
+if signal_filter != "All":
+    df = df[df["Signal Strength"] == signal_filter]
+
+if not df.empty:
+    st.dataframe(df)
+    st.download_button("Download CSV", df.to_csv(index=False), file_name="sp500_signals.csv")
 else:
-    st.warning("No tickers found with strong multi-interval setup right now.")
+    st.info("No data available.")
