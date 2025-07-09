@@ -4,6 +4,7 @@ import yfinance as yf
 import ta
 import numpy as np
 from streamlit_autorefresh import st_autorefresh
+from datetime import datetime
 
 # Page setup
 st.set_page_config(page_title="Swing Trade Multi-Interval Scanner", layout="wide")
@@ -11,6 +12,7 @@ st.title("📈 Peppy's Ultimate Swing Trade Signal Strength Dashboard")
 
 # Auto-refresh every 2 minutes (120000 ms)
 st_autorefresh(interval=120000, limit=None, key="auto-refresh")
+st.caption(f"🔄 Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Tickers to scan
 tickers = [
