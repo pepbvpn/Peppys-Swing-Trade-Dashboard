@@ -3,10 +3,16 @@ import pandas as pd
 import yfinance as yf
 import ta
 import numpy as np
+from streamlit_autorefresh import st_autorefresh
 
+# Page setup
 st.set_page_config(page_title="Swing Trade Multi-Interval Scanner", layout="wide")
 st.title("📈 Swing Trade Signal Strength Dashboard")
 
+# Auto-refresh every 2 minutes (120000 ms)
+st_autorefresh(interval=120000, limit=None, key="auto-refresh")
+
+# Tickers to scan
 tickers = [
     "NVDA", "AAPL", "MSFT", "TSLA", "SPY", "AMZN", "HOOD", "META", "WMT", "UNH",
     "QQQ", "AMD", "TSM", "SMH", "XLY", "COIN", "AVGO", "BRK.B", "GOOGL"
@@ -16,6 +22,7 @@ st.markdown(f"**Scanning Tickers:** {', '.join(tickers)}")
 intervals = ["15m", "1h", "1d"]
 period_map = {"15m": "10d", "1h": "60d", "1d": "1y"}
 
+# Scoring logic
 def classify_strength(trends, sentiments):
     all_bullish = all(t == "📈 Bullish" for t in trends)
     all_accum = all(s == "📈 Accumulating" for s in sentiments)
@@ -32,6 +39,7 @@ def classify_strength(trends, sentiments):
     else:
         return "😐 NEUTRAL"
 
+# Download + classify trend/sentiment per interval
 @st.cache_data(show_spinner=False)
 def get_trend_sentiment(ticker, interval):
     yf_ticker = "BRK-B" if ticker.upper() == "BRK.B" else ticker.upper()
@@ -44,6 +52,7 @@ def get_trend_sentiment(ticker, interval):
         close = df['Close']
         volume = df['Volume']
 
+        # Convert to 1D series if necessary
         if isinstance(close, pd.DataFrame):
             close = close.squeeze()
         if isinstance(volume, pd.DataFrame):
@@ -55,6 +64,7 @@ def get_trend_sentiment(ticker, interval):
         if len(close) < 60 or len(volume) < 60:
             return "❓", "❓"
 
+        # Calculate indicators
         obv = ta.volume.OnBalanceVolumeIndicator(close=close, volume=volume).on_balance_volume()
         df["OBV"] = obv
         sma50 = close.rolling(50).mean()
@@ -63,6 +73,7 @@ def get_trend_sentiment(ticker, interval):
         trend = "❓"
         sentiment = "❓"
 
+        # Trend logic
         if not np.isnan(close.iloc[-1]) and not np.isnan(sma50.iloc[-1]) and not np.isnan(sma200.iloc[-1]):
             if close.iloc[-1] > sma50.iloc[-1] and sma50.iloc[-1] > sma200.iloc[-1]:
                 trend = "📈 Bullish"
@@ -71,6 +82,7 @@ def get_trend_sentiment(ticker, interval):
             else:
                 trend = "↔️ Neutral"
 
+        # Institutional sentiment logic
         if "OBV" in df.columns and len(df["OBV"]) >= 6:
             obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
             if obv_diff > 0:
@@ -86,6 +98,7 @@ def get_trend_sentiment(ticker, interval):
         st.text(f"Error for {ticker} at {interval}: {e}")
         return "❓", "❓"
 
+# Run scan
 results = []
 for ticker in tickers:
     trend_list, sentiment_list = [], []
@@ -102,10 +115,11 @@ for ticker in tickers:
     display_ticker = "BRK.B" if ticker == "BRK.B" else ticker
     results.append({"Ticker": display_ticker, "Signal Strength": strength, **interval_details})
 
+# Display table
 df = pd.DataFrame(results)
-
 if not df.empty:
     st.dataframe(df)
     st.download_button("Download CSV", df.to_csv(index=False), file_name="multi_interval_signals.csv")
 else:
     st.info("No data available for selected tickers.")
+     
