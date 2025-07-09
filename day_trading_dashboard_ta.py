@@ -22,22 +22,36 @@ st.markdown(f"**Scanning Tickers:** {', '.join(tickers)}")
 intervals = ["15m", "1h", "1d"]
 period_map = {"15m": "10d", "1h": "60d", "1d": "1y"}
 
-# Scoring logic
+# Final signal strength classification
 def classify_strength(trends, sentiments):
-    all_bullish = all(t == "📈 Bullish" for t in trends)
-    all_accum = all(s == "📈 Accumulating" for s in sentiments)
-    any_bearish_dist = any(t == "📉 Bearish" and s == "📉 Distributing" for t, s in zip(trends, sentiments))
-    any_both = any(t == "📈 Bullish" and s == "📈 Accumulating" for t, s in zip(trends, sentiments))
-    all_have_either = all(t == "📈 Bullish" or s == "📈 Accumulating" for t, s in zip(trends, sentiments))
-
-    if all_bullish and all_accum:
+    # ✅ PERFECT: All Bullish AND All Accumulating
+    if all(t == "📈 Bullish" for t in trends) and all(s == "📈 Accumulating" for s in sentiments):
         return "✅ PERFECT"
-    elif all_have_either and any_both:
-        return "💪 STRONG"
-    elif any_bearish_dist:
+
+    # ⚠️ WEAK:
+    if sum(t == "📉 Bearish" for t in trends) >= 2:
         return "⚠️ WEAK"
-    else:
-        return "😐 NEUTRAL"
+    if all(s == "📉 Distributing" for s in sentiments):
+        return "⚠️ WEAK"
+    for t, s in zip(trends, sentiments):
+        if t == "📉 Bearish" and s == "📉 Distributing":
+            return "⚠️ WEAK"
+
+    # 💪 STRONG:
+    if all(t in ["📈 Bullish", "↔️ Neutral"] for t in trends) and \
+       all(s in ["📈 Accumulating", "📉 Distributing"] for s in sentiments):
+        
+        has_bullish_and_accum = any(
+            t == "📈 Bullish" and s == "📈 Accumulating"
+            for t, s in zip(trends, sentiments)
+        )
+        distributing_count = sum(s == "📉 Distributing" for s in sentiments)
+
+        if has_bullish_and_accum and distributing_count <= 1:
+            return "💪 STRONG"
+
+    # 😐 NEUTRAL
+    return "😐 NEUTRAL"
 
 # Download + classify trend/sentiment per interval
 @st.cache_data(show_spinner=False)
@@ -52,7 +66,6 @@ def get_trend_sentiment(ticker, interval):
         close = df['Close']
         volume = df['Volume']
 
-        # Convert to 1D series if necessary
         if isinstance(close, pd.DataFrame):
             close = close.squeeze()
         if isinstance(volume, pd.DataFrame):
@@ -64,7 +77,6 @@ def get_trend_sentiment(ticker, interval):
         if len(close) < 60 or len(volume) < 60:
             return "❓", "❓"
 
-        # Calculate indicators
         obv = ta.volume.OnBalanceVolumeIndicator(close=close, volume=volume).on_balance_volume()
         df["OBV"] = obv
         sma50 = close.rolling(50).mean()
@@ -82,7 +94,7 @@ def get_trend_sentiment(ticker, interval):
             else:
                 trend = "↔️ Neutral"
 
-        # Institutional sentiment logic
+        # Sentiment logic
         if "OBV" in df.columns and len(df["OBV"]) >= 6:
             obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
             if obv_diff > 0:
@@ -122,4 +134,3 @@ if not df.empty:
     st.download_button("Download CSV", df.to_csv(index=False), file_name="multi_interval_signals.csv")
 else:
     st.info("No data available for selected tickers.")
-     
