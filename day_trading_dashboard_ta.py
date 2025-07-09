@@ -1,68 +1,101 @@
-
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 import ta
-import plotly.graph_objects as go
+import numpy as np
 
-# Streamlit setup
-st.set_page_config(page_title="Day Trading Signal Dashboard", layout="wide")
-st.title("📈 Day Trading Signal Dashboard")
+st.set_page_config(page_title="Swing Trade Multi-Interval Scanner", layout="wide")
+st.title("📈 Swing Trade Signal Strength Dashboard")
 
-# Sidebar
-ticker = st.sidebar.text_input("Enter Ticker Symbol", value="AAPL")
-interval = st.sidebar.selectbox("Select Interval", ["1m", "5m", "15m", "30m", "1h", "1d"])
-period = st.sidebar.selectbox("Select Data Period", ["1d", "5d", "7d", "1mo"])
+tickers = [
+    "NVDA", "AAPL", "MSFT", "TSLA", "SPY", "AMZN", "HOOD", "META", "WMT", "UNH",
+    "QQQ", "AMD", "TSM", "SMH", "XLY", "COIN", "AVGO", "BRK.B", "GOOGL"
+]
+st.markdown(f"**Scanning Tickers:** {', '.join(tickers)}")
 
-# Load data
-@st.cache_data
-def get_data(ticker, interval, period):
-    df = yf.download(ticker, interval=interval, period=period)
-    df.dropna(inplace=True)
-    return df
+intervals = ["15m", "1h", "1d"]
+period_map = {"15m": "10d", "1h": "60d", "1d": "1y"}
 
-df = get_data(ticker, interval, period)
+def safe_round(val, digits=2):
+    try:
+        return round(float(val), digits)
+    except:
+        return "N/A"
 
-# Calculate indicators using `ta`
-df["EMA9"] = ta.trend.EMAIndicator(close=df["Close"], window=9).ema_indicator()
-df["EMA21"] = ta.trend.EMAIndicator(close=df["Close"], window=21).ema_indicator()
-df["SMA50"] = ta.trend.SMAIndicator(close=df["Close"], window=50).sma_indicator()
-df["SMA200"] = ta.trend.SMAIndicator(close=df["Close"], window=200).sma_indicator()
-df["RSI"] = ta.momentum.RSIIndicator(close=df["Close"]).rsi()
-df["MACD"] = ta.trend.MACD(close=df["Close"]).macd()
-df["MACD_signal"] = ta.trend.MACD(close=df["Close"]).macd_signal()
-df["OBV"] = ta.volume.OnBalanceVolumeIndicator(close=df["Close"], volume=df["Volume"]).on_balance_volume()
-df["ATR"] = ta.volatility.AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"]).average_true_range()
+def classify_strength(trends, sentiments):
+    all_bullish = all(t == "📈 Bullish" for t in trends)
+    all_accum = all(s == "📈 Accumulating" for s in sentiments)
+    any_bearish_dist = any(t == "📉 Bearish" and s == "📉 Distributing" for t, s in zip(trends, sentiments))
+    any_both = any(t == "📈 Bullish" and s == "📈 Accumulating" for t, s in zip(trends, sentiments))
+    all_have_either = all(t == "📈 Bullish" or s == "📈 Accumulating" for t, s in zip(trends, sentiments))
 
-# Signal logic
-latest = df.iloc[-1]
-signal = "⏸️ WAIT / NO STRONG SIGNAL"
-if latest["RSI"] < 30 and latest["MACD"] > latest["MACD_signal"]:
-    signal = "🔼 BUY SIGNAL"
-elif latest["RSI"] > 70 and latest["MACD"] < latest["MACD_signal"]:
-    signal = "🔽 SELL SIGNAL"
+    if all_bullish and all_accum:
+        return "✅ PERFECT"
+    elif all_have_either and any_both:
+        return "💪 STRONG"
+    elif any_bearish_dist:
+        return "⚠️ WEAK"
+    else:
+        return "😐 NEUTRAL"
 
-# Signal summary
-st.subheader(f"📌 Signal for {ticker}")
-st.markdown(f"**Signal:** {signal}")
-st.markdown(f"**RSI:** {latest['RSI']:.2f}")
-st.markdown(f"**MACD:** {latest['MACD']:.2f}")
-st.markdown(f"**OBV:** {latest['OBV']:.2f}")
-st.markdown(f"**ATR:** {latest['ATR']:.2f}")
+@st.cache_data(show_spinner=False)
+def get_trend_sentiment(ticker, interval):
+    try:
+        df = yf.download(ticker, interval=interval, period=period_map[interval], progress=False)
+        if df.empty or len(df) < 50:
+            return "❓", "❓"
 
-# Chart
-fig = go.Figure()
-fig.add_trace(go.Candlestick(x=df.index,
-                             open=df["Open"], high=df["High"],
-                             low=df["Low"], close=df["Close"],
-                             name="Price"))
-fig.add_trace(go.Scatter(x=df.index, y=df["EMA9"], name="EMA9"))
-fig.add_trace(go.Scatter(x=df.index, y=df["EMA21"], name="EMA21"))
-fig.add_trace(go.Scatter(x=df.index, y=df["SMA50"], name="SMA50"))
-fig.add_trace(go.Scatter(x=df.index, y=df["SMA200"], name="SMA200"))
-fig.update_layout(title=f"{ticker} Price Chart", xaxis_title="Time", yaxis_title="Price", height=600)
-st.plotly_chart(fig, use_container_width=True)
+        close = df['Close']
+        volume = df['Volume']
+        obv = ta.volume.OnBalanceVolumeIndicator(close=close, volume=volume).on_balance_volume()
+        df["OBV"] = obv
+        sma50 = close.rolling(50).mean()
+        sma200 = close.rolling(200).mean()
 
-# Latest Data Table
-st.subheader("📊 Latest Data")
-st.dataframe(df.tail(10))
+        trend = "❓"
+        sentiment = "❓"
+
+        if not np.isnan(close.iloc[-1]) and not np.isnan(sma50.iloc[-1]) and not np.isnan(sma200.iloc[-1]):
+            if close.iloc[-1] > sma50.iloc[-1] and sma50.iloc[-1] > sma200.iloc[-1]:
+                trend = "📈 Bullish"
+            elif close.iloc[-1] < sma50.iloc[-1] and sma50.iloc[-1] < sma200.iloc[-1]:
+                trend = "📉 Bearish"
+            else:
+                trend = "↔️ Neutral"
+
+        if len(df["OBV"]) >= 6:
+            obv_diff = df["OBV"].iloc[-1] - df["OBV"].iloc[-6]
+            if obv_diff > 0:
+                sentiment = "📈 Accumulating"
+            elif obv_diff < 0:
+                sentiment = "📉 Distributing"
+            else:
+                sentiment = "➖ Neutral"
+
+        return trend, sentiment
+
+    except Exception as e:
+        return "❓", "❓"
+
+results = []
+for ticker in tickers:
+    trend_list, sentiment_list = [], []
+    interval_details = {}
+
+    for interval in intervals:
+        trend, sentiment = get_trend_sentiment(ticker, interval)
+        trend_list.append(trend)
+        sentiment_list.append(sentiment)
+        interval_details[f"{interval} Trend"] = trend
+        interval_details[f"{interval} Sentiment"] = sentiment
+
+    strength = classify_strength(trend_list, sentiment_list)
+    results.append({"Ticker": ticker, "Signal Strength": strength, **interval_details})
+
+df = pd.DataFrame(results)
+
+if not df.empty:
+    st.dataframe(df)
+    st.download_button("Download CSV", df.to_csv(index=False), file_name="multi_interval_signals.csv")
+else:
+    st.info("No data available for selected tickers.")
