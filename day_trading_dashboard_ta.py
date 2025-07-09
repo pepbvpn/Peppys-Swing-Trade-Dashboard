@@ -41,8 +41,17 @@ def get_trend_sentiment(ticker, interval):
         if df.empty or "Close" not in df.columns or "Volume" not in df.columns:
             return "❓", "❓"
 
-        close = df['Close'].dropna()
-        volume = df['Volume'].dropna()
+        close = df['Close']
+        volume = df['Volume']
+
+        if isinstance(close, pd.DataFrame):
+            close = close.squeeze()
+        if isinstance(volume, pd.DataFrame):
+            volume = volume.squeeze()
+
+        close = close.dropna()
+        volume = volume.dropna()
+
         if len(close) < 60 or len(volume) < 60:
             return "❓", "❓"
 
