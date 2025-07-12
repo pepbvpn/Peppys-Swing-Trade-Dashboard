@@ -13,7 +13,15 @@ med_db = pd.DataFrame([
     {"Medication": "Diphenhydramine", "Class": "Antihistamine", "Used For": "Allergies", "Beers": True, "Renal Warning": False}
 ])
 
-# Condition to drug class mapping
+# Known interaction pairs and messages
+interactions = {
+    ("Simvastatin", "Amlodipine"): "Increased risk of myopathy; limit simvastatin dose",
+    ("Lisinopril", "Metoprolol"): "Risk of hypotension, monitor BP",
+    ("Metformin", "Lisinopril"): "Increased risk of lactic acidosis",
+    ("Diphenhydramine", "Metoprolol"): "Additive CNS depression"
+}
+
+# Recommended medication classes by condition
 condition_recommendations = {
     "Diabetes": ["Biguanide", "Statin", "ACE Inhibitor"],
     "Hypertension": ["ACE Inhibitor", "Calcium Channel Blocker", "Beta Blocker"],
@@ -22,33 +30,33 @@ condition_recommendations = {
     "ASCVD": ["Statin"]
 }
 
-st.title("Enhanced MTM Support Tool")
+st.title("MTM Support Tool with Interaction, Beers, and Renal Checks")
 
-# User inputs
+# User Inputs
 meds_input = st.text_area("Enter Patient's Medications (comma-separated):", "Lisinopril, Metformin, Diphenhydramine")
 conditions_input = st.multiselect("Select Patient's Conditions:", list(condition_recommendations.keys()))
 age = st.number_input("Enter Patient Age:", min_value=0, max_value=120, value=70)
 egfr = st.number_input("Enter Patient eGFR (ml/min/1.73m²):", min_value=0, max_value=200, value=60)
 
-# Processing
+# Process medication input
 input_meds = [m.strip().title() for m in meds_input.split(",")]
 selected = med_db[med_db["Medication"].isin(input_meds)]
 med_classes = selected["Class"].tolist()
 
-# Duplication check
+# Therapeutic duplication check
 duplicates = selected.groupby("Class").filter(lambda x: len(x) > 1)
 
-# Gap in care check
+# Gaps in care check
 missing_classes = []
 for condition in conditions_input:
     for required_class in condition_recommendations[condition]:
         if required_class not in med_classes:
             missing_classes.append((condition, required_class))
 
-# Beers Criteria alert
+# Beers Criteria check
 beers_flags = selected[selected["Beers"] == True] if age >= 65 else pd.DataFrame()
 
-# Renal adjustment alert
+# Renal adjustment check
 renal_flags = selected[selected["Renal Warning"] != False]
 renal_flags = renal_flags.copy()
 renal_flags["Renal Risk"] = renal_flags["Renal Warning"].apply(
@@ -57,7 +65,18 @@ renal_flags["Renal Risk"] = renal_flags["Renal Warning"].apply(
     ) else "✅ Safe"
 )
 
-# Display results
+# Drug interaction check
+interaction_warnings = []
+for i in range(len(input_meds)):
+    for j in range(i + 1, len(input_meds)):
+        pair = (input_meds[i], input_meds[j])
+        rev_pair = (input_meds[j], input_meds[i])
+        if pair in interactions:
+            interaction_warnings.append((pair[0], pair[1], interactions[pair]))
+        elif rev_pair in interactions:
+            interaction_warnings.append((rev_pair[0], rev_pair[1], interactions[rev_pair]))
+
+# Display Results
 st.subheader("Therapeutic Duplications")
 if not duplicates.empty:
     st.dataframe(duplicates)
@@ -82,3 +101,10 @@ if not renal_flags.empty:
     st.dataframe(renal_flags[["Medication", "Class", "Renal Warning", "Renal Risk"]])
 else:
     st.write("✅ No renal dosing concerns for current eGFR.")
+
+st.subheader("Drug Interaction Alerts")
+if interaction_warnings:
+    for med1, med2, note in interaction_warnings:
+        st.write(f"⚠️ Interaction between **{med1}** and **{med2}**: {note}")
+else:
+    st.write("✅ No known interactions found among listed medications.")
